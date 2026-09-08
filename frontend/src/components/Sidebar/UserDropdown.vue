@@ -6,10 +6,10 @@
 					class="flex h-12 items-center rounded-md duration-300 ease-in-out text-white"
 					:class="
 						isCollapsed
-							? 'px-0 w-auto bg-pink-500 hover:bg-pink-600'
+							? 'px-0 w-auto bg-amber-600 hover:bg-amber-700'
 							: open
-							? 'bg-pink-600 shadow-sm px-2 w-52'
-							: 'bg-pink-500 hover:bg-pink-600 px-2 w-52'
+							? 'bg-amber-700 shadow-sm px-2 w-52'
+							: 'bg-amber-600 hover:bg-amber-700 px-2 w-52'
 					"
 				>
 					<img
@@ -39,7 +39,7 @@
 						</div>
 						<div
 							v-if="userResource.data"
-							class="-mt-0.5 text-p-sm text-pink-100"
+							class="-mt-0.5 text-p-sm text-amber-100"
 						>
 							{{ convertToTitleCase(userResource.data?.full_name) }}
 						</div>
@@ -52,7 +52,7 @@
 								: 'opacity-100 ms-2 w-auto'
 						"
 					>
-						<span class="lucide-chevron-down h-4 w-4 text-pink-200" />
+						<span class="lucide-chevron-down h-4 w-4 text-amber-200" />
 					</div>
 				</button>
 			</template>

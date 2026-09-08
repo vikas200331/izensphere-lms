@@ -31,7 +31,7 @@
 						colors: [
 							'var(--red-400)',
 							'var(--amber-400)',
-							'var(--pink-400)',
+							'var(--orange-400)',
 							'var(--blue-400)',
 							'var(--green-400)',
 						],

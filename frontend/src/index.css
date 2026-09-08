@@ -15,7 +15,7 @@
    chosen theme instead of the OS's. Precedent: helpdesk/desk/src/index.css
    styles `html, body` from the same token set. */
 html, body {
-	background: linear-gradient(to bottom right, #fdf2f8, #fbcfe8);
+	background: linear-gradient(to bottom right, #fffbeb, #fde68a);
 	background-attachment: fixed;
 	color-scheme: light;
 }
