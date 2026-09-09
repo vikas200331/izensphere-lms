@@ -47,7 +47,7 @@
 				<Button
 					v-if="canSubmitForApproval(batch.data)"
 					variant="solid"
-					theme="amber"
+					theme="blue"
 					class="mt-4"
 					:loading="workflowActionToggle.loading"
 					@click="submitForApproval"
@@ -309,13 +309,13 @@ const togglePublishBatch = () => {
 
 const getWorkflowBadgeTheme = (state) => {
 	const map = {
-		'Draft': 'gray',
-		'Pending Principal Approval': 'orange',
-		'Approved': 'green',
-		'Published': 'green',
+		'Draft': 'red',
+		'Pending Principal Approval': 'red',
+		'Approved': 'red',
+		'Published': 'red',
 		'Rejected': 'red'
 	}
-	return map[state] || 'gray'
+	return map[state] || 'red'
 }
 
 const canSubmitForApproval = (data) => {

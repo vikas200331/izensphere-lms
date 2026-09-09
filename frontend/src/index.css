@@ -48,7 +48,7 @@ svg.lucide {
 }
 
 .header-frame {
-	@apply flex shrink-0 items-center border-b border-outline-gray-1 bg-surface-base px-5;
+	@apply flex shrink-0 items-center border-b border-outline-gray-1 bg-blue-100 px-5;
 	min-height: var(--header-frame-h);
 }
 

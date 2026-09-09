@@ -24,7 +24,7 @@
 						<h3 class="text-lg font-medium">{{ course.title }}</h3>
 						<p class="text-sm text-ink-gray-5 mt-1">{{ __('Instructor') }}: {{ course.owner }}</p>
 						<div class="flex gap-2 mt-4">
-							<Button variant="solid" theme="amber" @click="handleAction('LMS Course', course.name, 'Approve')">
+							<Button variant="solid" theme="blue" @click="handleAction('LMS Course', course.name, 'Approve')">
 								{{ __('Approve & Publish') }}
 							</Button>
 							<Button variant="outline" theme="red" @click="openRejectModal('LMS Course', course.name)">
@@ -43,7 +43,7 @@
 						<h3 class="text-lg font-medium">{{ batch.title }}</h3>
 						<p class="text-sm text-ink-gray-5 mt-1">{{ __('Start Date') }}: {{ batch.start_date }}</p>
 						<div class="flex gap-2 mt-4">
-							<Button variant="solid" theme="amber" @click="handleAction('LMS Batch', batch.name, 'Approve')">
+							<Button variant="solid" theme="blue" @click="handleAction('LMS Batch', batch.name, 'Approve')">
 								{{ __('Approve & Publish') }}
 							</Button>
 							<Button variant="outline" theme="red" @click="openRejectModal('LMS Batch', batch.name)">

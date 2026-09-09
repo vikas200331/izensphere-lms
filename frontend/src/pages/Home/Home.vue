@@ -1,5 +1,60 @@
 <template>
 	<div class="w-full p-5">
+		<!-- iLMS CSS Banner -->
+		<div class="mb-6 w-full rounded-2xl overflow-hidden shadow-lg bg-gradient-to-r from-[#0B1528] to-blue-900 text-white p-6 md:p-8 flex flex-col md:flex-row items-center justify-between relative border border-blue-800">
+			<!-- Subtle background pattern -->
+			<div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(#ffffff 1px, transparent 1px); background-size: 24px 24px;"></div>
+			
+			<!-- Left Section -->
+			<div class="flex flex-col space-y-5 z-10 w-full md:w-2/3">
+				<!-- Brand Header -->
+				<div class="flex items-center space-x-3">
+					<div class="w-12 h-12 rounded-full overflow-hidden border border-blue-400/30 flex items-center justify-center shrink-0 shadow-lg bg-black">
+						<img src="/izensphere-logo.png" alt="iZenSphere Logo" class="w-full h-full object-cover" />
+					</div>
+					<div class="leading-tight flex flex-col">
+						<span class="font-semibold text-blue-50 tracking-wide text-sm">iZenSphere Consulting</span>
+						<span class="text-amber-400 text-xs font-medium">www.izensphere.com</span>
+					</div>
+				</div>
+				
+				<!-- Main Content -->
+				<div class="flex flex-col">
+					<div class="text-amber-400 text-xs tracking-[0.2em] font-semibold uppercase mb-2 flex items-center opacity-90">
+						<span class="w-8 h-px bg-amber-400 mr-3"></span>
+						Smart Learning Solutions
+					</div>
+					<div class="text-4xl md:text-5xl font-black tracking-tight drop-shadow-md">
+						<span class="text-white">i</span><span class="text-amber-400">LMS</span>
+					</div>
+				</div>
+				
+				<p class="text-blue-100 text-sm md:text-base leading-relaxed max-w-xl font-light opacity-90">
+					A smart and flexible Learning Management System — designed to deliver engaging learning experiences, track progress and build a better future.
+				</p>
+			</div>
+
+			<!-- Right Section (Clean Glassmorphism Graphic) -->
+			<div class="hidden md:flex z-10 w-1/3 justify-end items-center relative pr-4">
+				<div class="relative flex items-center justify-center">
+					<!-- Glow effect -->
+					<div class="absolute inset-0 bg-blue-400 rounded-full opacity-20 blur-3xl transform scale-125"></div>
+					
+					<!-- Center Icon -->
+					<div class="bg-white/10 backdrop-blur-md rounded-2xl p-6 border border-white/20 shadow-2xl relative z-10 transition-transform duration-500 hover:scale-105">
+						<span class="lucide-graduation-cap size-20 text-white drop-shadow-lg" />
+					</div>
+					
+					<!-- Floating Accents -->
+					<div class="absolute -bottom-5 -left-6 bg-amber-500 rounded-xl p-2.5 shadow-xl border border-amber-400/50 z-20">
+						<span class="lucide-book-open size-6 text-white" />
+					</div>
+					<div class="absolute -top-5 -right-5 bg-blue-500 rounded-xl p-2.5 shadow-xl border border-blue-400/50 z-20">
+						<span class="lucide-monitor size-6 text-white" />
+					</div>
+				</div>
+			</div>
+		</div>
 		<div class="space-y-2">
 			<div class="flex items-center justify-between">
 				<h1 class="text-2xl-bold text-ink-gray-9">

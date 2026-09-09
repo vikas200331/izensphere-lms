@@ -150,7 +150,7 @@
 				<Button
 					v-if="user.data?.is_principal && course.data.workflow_state === 'Pending Principal Approval'"
 					variant="solid"
-					theme="green"
+					theme="blue"
 					class="mt-4 mr-2"
 					:loading="approveActionToggle.loading"
 					@click="approveCourse"
@@ -160,7 +160,7 @@
 				<Button
 					v-if="canSubmitForApproval(course.data)"
 					variant="solid"
-					theme="amber"
+					theme="blue"
 					class="mt-4"
 					:loading="workflowActionToggle.loading"
 					@click="submitForApproval"
@@ -489,13 +489,13 @@ watch(course, () => {
 
 const getWorkflowBadgeTheme = (state: string) => {
 	const map: Record<string, string> = {
-		'Draft': 'gray',
-		'Pending Principal Approval': 'orange',
-		'Approved': 'green',
-		'Published': 'green',
+		'Draft': 'red',
+		'Pending Principal Approval': 'red',
+		'Approved': 'red',
+		'Published': 'red',
 		'Rejected': 'red'
 	}
-	return map[state] || 'gray'
+	return map[state] || 'red'
 }
 
 const canSubmitForApproval = (data: any) => {
