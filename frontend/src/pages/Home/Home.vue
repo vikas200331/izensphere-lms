@@ -14,24 +14,23 @@
 					</div>
 					<div class="leading-tight flex flex-col">
 						<span class="font-semibold text-blue-50 tracking-wide text-sm">iZenSphere Consulting</span>
-						<span class="text-amber-400 text-xs font-medium">www.izensphere.com</span>
+						<a href="https://www.izensphere.com" target="_blank" class="text-amber-400 text-xs font-medium hover:text-amber-300 hover:underline transition-colors cursor-pointer">www.izensphere.com</a>
 					</div>
 				</div>
 				
 				<!-- Main Content -->
-				<div class="flex flex-col">
-					<div class="text-amber-400 text-xs tracking-[0.2em] font-semibold uppercase mb-2 flex items-center opacity-90">
-						<span class="w-8 h-px bg-amber-400 mr-3"></span>
+				<div class="flex flex-col pt-2">
+					<div class="text-amber-400 text-xs md:text-sm tracking-[0.25em] font-bold uppercase mb-2 flex items-center opacity-90">
+						<span class="w-12 h-[2px] bg-amber-400 mr-4 rounded-full"></span>
 						Smart Learning Solutions
 					</div>
-					<div class="text-4xl md:text-5xl font-black tracking-tight drop-shadow-md">
-						<span class="text-white">i</span><span class="text-amber-400">LMS</span>
-					</div>
+					<h1 class="text-5xl md:text-7xl font-black tracking-tighter drop-shadow-lg mb-4">
+						<span class="text-transparent bg-clip-text bg-gradient-to-br from-white to-blue-100">i</span><span class="text-transparent bg-clip-text bg-gradient-to-br from-amber-300 to-amber-500">LMS</span>
+					</h1>
+					<p class="text-blue-50 text-base md:text-lg leading-relaxed max-w-xl font-light opacity-95 border-l-2 border-blue-500/50 pl-4 mt-2">
+						A smart and flexible Learning Management System — designed to deliver engaging learning experiences, track progress and build a better future.
+					</p>
 				</div>
-				
-				<p class="text-blue-100 text-sm md:text-base leading-relaxed max-w-xl font-light opacity-90">
-					A smart and flexible Learning Management System — designed to deliver engaging learning experiences, track progress and build a better future.
-				</p>
 			</div>
 
 			<!-- Right Section (Clean Glassmorphism Graphic) -->

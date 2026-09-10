@@ -1,5 +1,12 @@
 [
  {
+  "category": "Education",
+  "docstatus": 0,
+  "doctype": "LMS Category",
+  "modified": "2026-08-14 12:03:19.331599",
+  "name": "Education"
+ },
+ {
   "category": "Web Development",
   "docstatus": 0,
   "doctype": "LMS Category",
@@ -47,5 +54,12 @@
   "doctype": "LMS Category",
   "modified": "2023-06-15 18:01:41.598282",
   "name": "Framework"
+ },
+ {
+  "category": "Programming",
+  "docstatus": 0,
+  "doctype": "LMS Category",
+  "modified": "2026-08-06 16:39:24.839755",
+  "name": "Programming"
  }
 ]
