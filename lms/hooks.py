@@ -305,3 +305,27 @@ raven_membership_providers = ["lms.raven_provider.get_provider"]
 # on System Manager plus whatever this hook names, and grants the named roles the
 # permissions its own doctypes need on install/migrate.
 raven_integration_manager_roles = ["Moderator"]
+
+
+
+
+
+fixtures = [
+    {
+        "dt": "Workflow",
+        "filters": [
+            ["name", "in", [
+                "LMS Course Approval",
+                "LMS Batch Approval"
+            ]]
+        ]
+    },
+    {
+        "dt": "Role",
+        "filters": [
+            ["name", "in", [
+                "Principal"
+            ]]
+        ]
+    }
+]
