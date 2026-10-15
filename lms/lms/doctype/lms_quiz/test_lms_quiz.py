@@ -254,3 +254,223 @@ class TestQuizResultValidation(unittest.TestCase):
 			with self.subTest(results=results):
 				with self.assertRaises(ValidationError):
 					self.fn(results)
+
+
+from datetime import timedelta
+from frappe.utils import add_days, add_to_date, get_datetime, now_datetime
+from lms.lms.doctype.lms_quiz.lms_quiz import (
+	get_quiz_schedule_info,
+	start_quiz_attempt,
+	save_quiz_progress,
+	submit_quiz,
+	auto_finalize_expired_attempt,
+)
+
+
+class TestQuizScheduling(unittest.TestCase):
+	def setUp(self):
+		self.cleanup_records = []
+		frappe.set_user("Administrator")
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		for dt, name in reversed(self.cleanup_records):
+			if frappe.db.exists(dt, name):
+				frappe.delete_doc(dt, name, force=True, ignore_permissions=True)
+
+	def create_question(self, prompt="What is 2+2?"):
+		q = frappe.new_doc("LMS Question")
+		q.question = prompt
+		q.type = "Choices"
+		q.option_1 = "4"
+		q.is_correct_1 = 1
+		q.option_2 = "5"
+		q.is_correct_2 = 0
+		q.save()
+		self.cleanup_records.append(("LMS Question", q.name))
+		return q
+
+	def create_quiz(self, title, enable_scheduling=0, **kwargs):
+		quiz = frappe.new_doc("LMS Quiz")
+		quiz.title = title
+		quiz.passing_percentage = 50
+		quiz.enable_quiz_scheduling = enable_scheduling
+		for k, v in kwargs.items():
+			setattr(quiz, k, v)
+		q = self.create_question(f"Question for {title}")
+		quiz.append("questions", {"question": q.name, "marks": 10})
+		quiz.save()
+		self.cleanup_records.append(("LMS Quiz", quiz.name))
+		return quiz
+
+	def test_normal_quiz_without_scheduling_works_with_empty_fields(self):
+		"""Test A: Normal quiz with empty schedule fields validates and works normally."""
+		quiz = self.create_quiz("Normal Unscheduled Quiz", enable_scheduling=0)
+		self.assertEqual(quiz.enable_quiz_scheduling, 0)
+		self.assertIsNone(quiz.quiz_start_date)
+
+		info = get_quiz_schedule_info(quiz.name)
+		self.assertFalse(info["is_scheduled"])
+		self.assertTrue(info["is_available"])
+
+	def test_scheduled_quiz_validates_required_fields(self):
+		"""Test B: Scheduled quiz requires start/end dates, valid duration, and end > start."""
+		# Missing dates
+		with self.assertRaises(frappe.ValidationError):
+			self.create_quiz("Scheduled Missing Dates", enable_scheduling=1)
+
+		# End datetime earlier than start datetime
+		now = now_datetime()
+		with self.assertRaises(frappe.ValidationError):
+			self.create_quiz(
+				"Scheduled Inverted Dates",
+				enable_scheduling=1,
+				quiz_start_date=str(now.date()),
+				quiz_start_time="14:00:00",
+				quiz_end_date=str(now.date()),
+				quiz_end_time="12:00:00",
+				duration=30,
+			)
+
+		# Valid dates and duration
+		quiz = self.create_quiz(
+			"Scheduled Valid Quiz",
+			enable_scheduling=1,
+			quiz_start_date=str(now.date()),
+			quiz_start_time="08:00:00",
+			quiz_end_date=str(add_days(now.date(), 1)),
+			quiz_end_time="18:00:00",
+			duration=30,
+		)
+		self.assertEqual(quiz.enable_quiz_scheduling, 1)
+
+	def test_quiz_availability_status_upcoming_available_expired(self):
+		"""Test B & C: Check upcoming, available, and expired statuses."""
+		now = now_datetime()
+		# Upcoming
+		upcoming = self.create_quiz(
+			"Upcoming Quiz",
+			enable_scheduling=1,
+			quiz_start_date=str(add_days(now.date(), 1)),
+			quiz_start_time="10:00:00",
+			quiz_end_date=str(add_days(now.date(), 2)),
+			quiz_end_time="10:00:00",
+			duration=20,
+		)
+		up_info = get_quiz_schedule_info(upcoming.name)
+		self.assertEqual(up_info["status"], "upcoming")
+		self.assertFalse(up_info["is_available"])
+
+		# Expired
+		expired = self.create_quiz(
+			"Expired Quiz",
+			enable_scheduling=1,
+			quiz_start_date=str(add_days(now.date(), -2)),
+			quiz_start_time="10:00:00",
+			quiz_end_date=str(add_days(now.date(), -1)),
+			quiz_end_time="10:00:00",
+			duration=20,
+		)
+		exp_info = get_quiz_schedule_info(expired.name)
+		self.assertEqual(exp_info["status"], "expired")
+		self.assertFalse(exp_info["is_available"])
+
+		# Available
+		avail = self.create_quiz(
+			"Available Quiz",
+			enable_scheduling=1,
+			quiz_start_date=str(add_days(now.date(), -1)),
+			quiz_start_time="10:00:00",
+			quiz_end_date=str(add_days(now.date(), 1)),
+			quiz_end_time="10:00:00",
+			duration=20,
+		)
+		av_info = get_quiz_schedule_info(avail.name)
+		self.assertEqual(av_info["status"], "available")
+		self.assertTrue(av_info["is_available"])
+
+	def test_start_attempt_and_countdown_effective_deadline(self):
+		"""Test B & C: Starting attempt returns earlier of (start+duration, closing)."""
+		now = now_datetime()
+		# Quiz closes in 15 minutes, duration is 30 minutes -> effective deadline is closing (15 mins)
+		quiz = self.create_quiz(
+			"Effective Deadline Quiz",
+			enable_scheduling=1,
+			quiz_start_date=str(now.date()),
+			quiz_start_time=str((now - timedelta(hours=1)).time()),
+			quiz_end_date=str(now.date()),
+			quiz_end_time=str((now + timedelta(minutes=15)).time()),
+			duration=30,
+		)
+		res = start_quiz_attempt(quiz.name)
+		self.assertTrue(res.get("attempt"))
+		self.cleanup_records.append(("LMS Quiz Attempt", res["attempt"]))
+		# Remaining seconds should be approximately 15 minutes (<= 900 seconds)
+		self.assertLessEqual(res["remaining_seconds"], 900)
+		self.assertGreater(res["remaining_seconds"], 800)
+
+		# Refresh / reconnect should return the SAME attempt without resetting timer
+		res2 = start_quiz_attempt(quiz.name)
+		self.assertEqual(res2["attempt"], res["attempt"])
+		self.assertTrue(res2["is_resumed"])
+		self.assertLessEqual(res2["remaining_seconds"], res["remaining_seconds"])
+
+	def test_deadline_enforcement_and_late_submission(self):
+		"""Test C: Submission past deadline is rejected or accepted under grace period."""
+		now = now_datetime()
+		# Quiz with allow_late_submission = 0
+		quiz_strict = self.create_quiz(
+			"Strict Deadline Quiz",
+			enable_scheduling=1,
+			quiz_start_date=str(now.date()),
+			quiz_start_time=str((now - timedelta(hours=1)).time()),
+			quiz_end_date=str(now.date()),
+			quiz_end_time=str((now + timedelta(hours=1)).time()),
+			duration=1,
+			allow_late_submission=0,
+		)
+		attempt = start_quiz_attempt(quiz_strict.name)
+		self.cleanup_records.append(("LMS Quiz Attempt", attempt["attempt"]))
+
+		# Artificially set deadline in the past to test deadline enforcement
+		past_deadline = now - timedelta(minutes=5)
+		frappe.db.set_value("LMS Quiz Attempt", attempt["attempt"], "deadline", past_deadline)
+		frappe.db.commit()
+
+		q_row = quiz_strict.questions[0]
+		results_payload = [{"question_name": q_row.question, "answer": ["4"]}]
+		import json
+		with self.assertRaises(frappe.ValidationError):
+			submit_quiz(quiz_strict.name, json.dumps(results_payload), attempt["attempt"])
+
+		# Now test with allow_late_submission = 1 and 10 min grace period
+		quiz_grace = self.create_quiz(
+			"Grace Period Quiz",
+			enable_scheduling=1,
+			quiz_start_date=str(now.date()),
+			quiz_start_time=str((now - timedelta(hours=1)).time()),
+			quiz_end_date=str(now.date()),
+			quiz_end_time=str((now + timedelta(hours=1)).time()),
+			duration=1,
+			allow_late_submission=1,
+			late_submission_grace_period=10,
+		)
+		attempt2 = start_quiz_attempt(quiz_grace.name)
+		self.cleanup_records.append(("LMS Quiz Attempt", attempt2["attempt"]))
+
+		# Set deadline to 3 minutes ago (within the 10 min grace period)
+		past_deadline = now - timedelta(minutes=3)
+		frappe.db.set_value("LMS Quiz Attempt", attempt2["attempt"], "deadline", past_deadline)
+		frappe.db.commit()
+
+		q_row2 = quiz_grace.questions[0]
+		results_payload2 = [{"question_name": q_row2.question, "answer": ["4"]}]
+		sub_res = submit_quiz(quiz_grace.name, json.dumps(results_payload2), attempt2["attempt"])
+		self.assertTrue(sub_res.get("submission"))
+		self.cleanup_records.append(("LMS Quiz Submission", sub_res["submission"]))
+		self.assertTrue(sub_res.get("is_late"))
+
+		# Submitting duplicate for the same attempt returns idempotent submission
+		dup_res = submit_quiz(quiz_grace.name, json.dumps(results_payload2), attempt2["attempt"])
+		self.assertEqual(dup_res["submission"], sub_res["submission"])
+

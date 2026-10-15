@@ -37,6 +37,20 @@
 					theme="red"
 					@click="deleteQuiz"
 				/>
+				<ShortcutTooltip
+					v-if="quizDetails.doc?.name"
+					:label="__('Save')"
+					combo="Mod+S"
+					:disabled="isMobile"
+				>
+					<HeaderButton
+						data-testid="quiz-save"
+						:label="__('Save')"
+						variant="solid"
+						:loading="Boolean(quizDetails.setValue?.loading)"
+						@click="submitQuiz()"
+					/>
+				</ShortcutTooltip>
 			</template>
 		</template>
 	</PageHeader>
@@ -138,6 +152,7 @@
 					variant="outline"
 				/>
 				<FormControl
+					v-if="!quizDetails.doc.enable_quiz_scheduling"
 					type="number"
 					v-model="quizDetails.doc.duration"
 					:label="__('Duration (in minutes)')"
@@ -169,6 +184,76 @@
 					variant="outline"
 					:required="true"
 				/>
+			</div>
+			<div class="space-y-5">
+				<h2 class="text-ink-gray-9 font-semibold">
+					{{ __('Quiz Schedule & Timing') }}
+				</h2>
+				<BooleanSwitch
+					v-model="quizDetails.doc.enable_quiz_scheduling"
+					size="sm"
+					:label="__('Enable Quiz Scheduling')"
+					:description="
+						__('Configure opening and closing dates/times and time-limited attempts.')
+					"
+				/>
+				<template v-if="quizDetails.doc.enable_quiz_scheduling">
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+						<FormControl
+							type="date"
+							v-model="quizDetails.doc.quiz_start_date"
+							:label="__('Quiz Start Date')"
+							variant="outline"
+							:required="true"
+						/>
+						<FormControl
+							type="time"
+							v-model="quizDetails.doc.quiz_start_time"
+							:label="__('Quiz Start Time')"
+							variant="outline"
+							:required="true"
+						/>
+						<FormControl
+							type="date"
+							v-model="quizDetails.doc.quiz_end_date"
+							:label="__('Quiz End Date')"
+							variant="outline"
+							:required="true"
+						/>
+						<FormControl
+							type="time"
+							v-model="quizDetails.doc.quiz_end_time"
+							:label="__('Quiz End Time')"
+							variant="outline"
+							:required="true"
+						/>
+					</div>
+					<FormControl
+						type="number"
+						min="1"
+						v-model="quizDetails.doc.duration"
+						:label="__('Quiz Duration (Minutes)')"
+						:description="__('Maximum duration of an individual attempt in minutes.')"
+						variant="outline"
+						:required="true"
+					/>
+					<BooleanSwitch
+						v-model="quizDetails.doc.allow_late_submission"
+						size="sm"
+						:label="__('Allow Late Submission')"
+						:description="
+							__('Allow students to submit within a grace period after the deadline.')
+						"
+					/>
+					<FormControl
+						v-if="quizDetails.doc.allow_late_submission"
+						type="number"
+						min="1"
+						v-model="quizDetails.doc.late_submission_grace_period"
+						:label="__('Late Submission Grace Period (in minutes)')"
+						variant="outline"
+					/>
+				</template>
 			</div>
 			<div class="space-y-5">
 				<h2 class="text-ink-gray-9 font-semibold">{{ __('Settings') }}</h2>
@@ -234,6 +319,8 @@ import {
 import BooleanSwitch from '@/components/Controls/BooleanSwitch.vue'
 import PageHeader from '@/components/Layouts/PageHeader.vue'
 import HeaderButton from '@/components/HeaderButton.vue'
+import ShortcutTooltip from '@/components/ShortcutTooltip.vue'
+import { useScreenSize } from '@/utils/composables'
 import {
 	computed,
 	ref,
@@ -255,13 +342,14 @@ import { sanitizeOnWrite } from '@/utils/sanitizeOnWrite'
 import { openFormRoute } from '@/composables/useFormRoute'
 import EmptyStateLayout from '@/components/Layouts/EmptyStateLayout.vue'
 import ResponsiveListView from '@/components/ResponsiveListView.vue'
-import { submitResource } from '@/utils/resource'
+import { resourceErrorMessage, submitResource } from '@/utils/resource'
 
 const { brand } = sessionStore()
 const pageLength = ref(20)
 const user = inject('$user')
 const route = useRoute()
 const router = useRouter()
+const { isMobile } = useScreenSize()
 const readOnlyMode = window.read_only_mode
 const { $dialog } = getCurrentInstance().appContext.config.globalProperties
 
@@ -330,7 +418,9 @@ const quizDetails = createDocumentResource({
 })
 
 const validateTitle = () => {
-	quizDetails.doc.title = sanitizeOnWrite(quizDetails.doc.title.trim())
+	if (quizDetails.doc?.title) {
+		quizDetails.doc.title = sanitizeOnWrite(quizDetails.doc.title.trim())
+	}
 }
 
 // Debounced silent autosave: a burst of edits collapses into a single save
@@ -359,6 +449,11 @@ const submitQuiz = (opts = {}) => {
 			total_marks: calculateTotalMarks(),
 		},
 		{
+			validate() {
+				if (!opts.silent && !quizDetails.doc?.title?.trim()) {
+					return __('Title is required')
+				}
+			},
 			onSuccess(data) {
 				quizDetails.doc.total_marks = data.total_marks
 				if (!opts.silent) toast.success(__('Quiz updated successfully'))
@@ -366,7 +461,7 @@ const submitQuiz = (opts = {}) => {
 			onError(err) {
 				// Autosave failures stay quiet; the orange "unsaved" badge remains
 				// so the change isn't silently lost.
-				if (!opts.silent) toast.error(err.messages?.[0] || err)
+				if (!opts.silent) toast.error(resourceErrorMessage(err))
 			},
 		}
 	)

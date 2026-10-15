@@ -80,8 +80,9 @@ vi.mock('@/components/Layouts/PageHeader.vue', () => ({
 }))
 vi.mock('@/components/HeaderButton.vue', () => ({
 	default: {
-		props: ['label', 'icon'],
-		template: `<button>{{ label }}</button>`,
+		inheritAttrs: false,
+		props: ['label', 'icon', 'loading', 'disabled', 'variant', 'theme'],
+		template: `<button v-bind="$attrs" :disabled="disabled">{{ label }}</button>`,
 	},
 }))
 vi.mock('@/components/Controls/BooleanSwitch.vue', () => ({
@@ -242,4 +243,27 @@ describe('QuizForm opening the question route', () => {
 			(router.options.history.state as Record<string, unknown>).lmsFormEntry
 		).toBe(true)
 	})
+
+	it('renders the Save button in the header and saves quiz on click', async () => {
+		const router = makeRouter()
+		await router.push({ name: 'QuizForm', params: { quizID: 'QUIZ-1' } })
+		const wrapper = await mountQuiz(router)
+
+		const saveButton = wrapper.find('[data-testid="quiz-save"]')
+		expect(saveButton.exists()).toBe(true)
+		expect(saveButton.text()).toContain('Save')
+
+		await saveButton.trigger('click')
+		await flushPromises()
+
+		expect(H.quizDoc.setValue.submit).toHaveBeenCalledWith(
+			expect.objectContaining({
+				name: 'QUIZ-1',
+				title: 'A quiz',
+				total_marks: 3,
+			}),
+			expect.any(Object)
+		)
+	})
 })
+

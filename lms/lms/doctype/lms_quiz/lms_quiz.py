@@ -6,11 +6,13 @@ import os
 import re
 from binascii import Error as BinasciiError
 
+from datetime import timedelta
+
 import frappe
 from frappe import _, safe_decode
 from frappe.core.doctype.file.utils import get_random_filename
 from frappe.model.document import Document
-from frappe.utils import cint, comma_and, escape_html
+from frappe.utils import cint, comma_and, escape_html, get_datetime, get_system_timezone, now_datetime
 from frappe.utils.file_manager import safe_b64decode
 from frappe.utils.html_utils import sanitize_html
 from fuzzywuzzy import fuzz
@@ -38,6 +40,33 @@ class LMSQuiz(Document):
 		self.validate_limit()
 		self.calculate_total_marks()
 		self.validate_open_ended_questions()
+		self.validate_schedule()
+
+	def validate_schedule(self):
+		if not getattr(self, "enable_quiz_scheduling", 0):
+			return
+
+		if not self.quiz_start_date:
+			frappe.throw(_("Quiz Start Date is required when scheduling is enabled."))
+		if not self.quiz_start_time:
+			frappe.throw(_("Quiz Start Time is required when scheduling is enabled."))
+		if not self.quiz_end_date:
+			frappe.throw(_("Quiz End Date is required when scheduling is enabled."))
+		if not self.quiz_end_time:
+			frappe.throw(_("Quiz End Time is required when scheduling is enabled."))
+
+		if not self.duration or cint(self.duration) <= 0:
+			frappe.throw(_("Quiz Duration (Minutes) must be a positive number when scheduling is enabled."))
+
+		start_dt = get_datetime(f"{self.quiz_start_date} {self.quiz_start_time}")
+		end_dt = get_datetime(f"{self.quiz_end_date} {self.quiz_end_time}")
+
+		if end_dt <= start_dt:
+			frappe.throw(_("Quiz End Date & Time must be later than Start Date & Time."))
+
+		if self.allow_late_submission and self.late_submission_grace_period is not None:
+			if cint(self.late_submission_grace_period) < 0:
+				frappe.throw(_("Late Submission Grace Period cannot be negative."))
 
 	def validate_duplicate_questions(self):
 		questions = [row.question for row in self.questions]
@@ -136,7 +165,7 @@ def _validate_quiz_results(results):
 
 
 @frappe.whitelist()
-def submit_quiz(quiz: str, results: str | None = None):
+def submit_quiz(quiz: str, results: str | None = None, attempt: str | None = None):
 	if not isinstance(quiz, str):
 		frappe.throw(_("Invalid quiz."), frappe.ValidationError)
 
@@ -156,6 +185,14 @@ def submit_quiz(quiz: str, results: str | None = None):
 			"course",
 			"enable_negative_marking",
 			"marks_to_cut",
+			"enable_quiz_scheduling",
+			"quiz_start_date",
+			"quiz_start_time",
+			"quiz_end_date",
+			"quiz_end_time",
+			"duration",
+			"allow_late_submission",
+			"late_submission_grace_period",
 		],
 		as_dict=1,
 	)
@@ -167,6 +204,82 @@ def submit_quiz(quiz: str, results: str | None = None):
 	if not can_access_quiz(quiz):
 		frappe.throw(_("You are not authorized to submit this quiz."), frappe.PermissionError)
 
+	now = now_datetime()
+	attempt_doc = None
+	is_late = 0
+
+	if quiz_details.enable_quiz_scheduling:
+		user = frappe.session.user
+		if attempt:
+			if not frappe.db.exists("LMS Quiz Attempt", attempt):
+				frappe.throw(_("Invalid quiz attempt."), frappe.ValidationError)
+			attempt_doc = frappe.get_doc("LMS Quiz Attempt", attempt)
+			if attempt_doc.quiz != quiz or attempt_doc.member != user:
+				frappe.throw(_("You are not authorized to submit this attempt."), frappe.PermissionError)
+		else:
+			attempt_name = frappe.db.get_value(
+				"LMS Quiz Attempt",
+				{"quiz": quiz, "member": user, "status": "In Progress"},
+				"name",
+			)
+			if attempt_name:
+				attempt_doc = frappe.get_doc("LMS Quiz Attempt", attempt_name)
+			else:
+				# Check if already submitted recently (idempotent / prevent duplicate results)
+				recent_attempts = frappe.get_all(
+					"LMS Quiz Attempt",
+					filters={"quiz": quiz, "member": user, "status": "Completed"},
+					order_by="modified desc",
+					limit=1,
+					fields=["name", "submission"],
+				)
+				if recent_attempts and recent_attempts[0].submission:
+					sub = frappe.get_doc("LMS Quiz Submission", recent_attempts[0].submission)
+					return {
+						"score": sub.score,
+						"score_out_of": sub.score_out_of,
+						"submission": sub.name,
+						"pass": (sub.percentage or 0) >= quiz_details.passing_percentage,
+						"percentage": sub.percentage or 0,
+						"is_open_ended": any(r.get("type") == "Open Ended" for r in (sub.result or [])),
+						"is_late": bool(sub.is_late),
+					}
+				frappe.throw(_("No active attempt found for this scheduled quiz."), frappe.ValidationError)
+
+		if attempt_doc.status == "Completed" and attempt_doc.submission:
+			sub = frappe.get_doc("LMS Quiz Submission", attempt_doc.submission)
+			return {
+				"score": sub.score,
+				"score_out_of": sub.score_out_of,
+				"submission": sub.name,
+				"pass": (sub.percentage or 0) >= quiz_details.passing_percentage,
+				"percentage": sub.percentage or 0,
+				"is_open_ended": any(r.get("type") == "Open Ended" for r in (sub.result or [])),
+				"is_late": bool(sub.is_late),
+			}
+
+		deadline = get_datetime(attempt_doc.deadline)
+		if now > deadline:
+			if not quiz_details.allow_late_submission:
+				attempt_doc.status = "Expired"
+				attempt_doc.save(ignore_permissions=True)
+				frappe.throw(
+					_("The quiz deadline has passed. Submissions are no longer accepted."),
+					frappe.ValidationError,
+				)
+			else:
+				grace_mins = cint(quiz_details.late_submission_grace_period or 5)
+				grace_deadline = deadline + timedelta(minutes=grace_mins)
+				if now > grace_deadline:
+					attempt_doc.status = "Expired"
+					attempt_doc.save(ignore_permissions=True)
+					frappe.throw(
+						_("The quiz deadline and late submission grace period have passed. Submissions are no longer accepted."),
+						frappe.ValidationError,
+					)
+				else:
+					is_late = 1
+
 	data = process_results(results, quiz_details)
 	is_open_ended = data["is_open_ended"]
 
@@ -174,10 +287,23 @@ def submit_quiz(quiz: str, results: str | None = None):
 	# runs validate_marks() + set_percentage() on save. Read them back rather
 	# than recomputing here, so the two paths can't drift.
 	submission = create_submission(
-		quiz, data["results"], quiz_details.total_marks, quiz_details.passing_percentage
+		quiz,
+		data["results"],
+		quiz_details.total_marks,
+		quiz_details.passing_percentage,
+		started_at=attempt_doc.start_time if attempt_doc else None,
+		submitted_at=now,
+		is_late=is_late,
+		attempt=attempt_doc.name if attempt_doc else None,
 	)
 	percentage = submission.percentage or 0
 	save_progress_after_quiz(quiz_details, percentage)
+
+	if attempt_doc:
+		attempt_doc.status = "Completed"
+		attempt_doc.submission = submission.name
+		attempt_doc.saved_answers = json.dumps(results)
+		attempt_doc.save(ignore_permissions=True)
 
 	return {
 		"score": submission.score,
@@ -186,6 +312,7 @@ def submit_quiz(quiz: str, results: str | None = None):
 		"pass": percentage >= quiz_details.passing_percentage,
 		"percentage": percentage,
 		"is_open_ended": is_open_ended,
+		"is_late": bool(is_late),
 	}
 
 
@@ -313,7 +440,17 @@ def get_corrupted_image_msg():
 	return _("Image: Corrupted Data Stream")
 
 
-def create_submission(quiz: str, results: list, score_out_of: int, passing_percentage: float):
+def create_submission(
+	quiz: str,
+	results: list,
+	score_out_of: int,
+	passing_percentage: float,
+	*,
+	started_at=None,
+	submitted_at=None,
+	is_late=0,
+	attempt=None,
+):
 	submission = frappe.new_doc("LMS Quiz Submission")
 	# Score and percentage are calculated by the controller function
 	submission.update(
@@ -326,6 +463,10 @@ def create_submission(quiz: str, results: list, score_out_of: int, passing_perce
 			"member": frappe.session.user,
 			"percentage": 0,
 			"passing_percentage": passing_percentage,
+			"started_at": started_at,
+			"submitted_at": submitted_at or now_datetime(),
+			"is_late": is_late,
+			"attempt": attempt,
 		}
 	)
 	submission.save(ignore_permissions=True)
@@ -397,3 +538,326 @@ def check_input_answers(question: str, answer: str):
 		if possibility and fuzz.token_sort_ratio(possibility, answer) > 85:
 			return 1
 	return 0
+
+
+@frappe.whitelist()
+def get_quiz_schedule_info(quiz: str) -> dict:
+	if not isinstance(quiz, str):
+		frappe.throw(_("Invalid quiz."), frappe.ValidationError)
+
+	from lms.lms.permissions import can_access_quiz
+
+	if not can_access_quiz(quiz):
+		frappe.throw(_("You are not authorized to access this quiz."), frappe.PermissionError)
+
+	quiz_row = frappe.db.get_value(
+		"LMS Quiz",
+		quiz,
+		[
+			"name",
+			"title",
+			"enable_quiz_scheduling",
+			"quiz_start_date",
+			"quiz_start_time",
+			"quiz_end_date",
+			"quiz_end_time",
+			"duration",
+			"allow_late_submission",
+			"late_submission_grace_period",
+			"max_attempts",
+		],
+		as_dict=True,
+	)
+	if not quiz_row:
+		frappe.throw(_("Quiz not found."), frappe.ValidationError)
+
+	if not quiz_row.enable_quiz_scheduling:
+		return {
+			"is_scheduled": False,
+			"is_available": True,
+			"can_start": True,
+			"status": "available",
+			"message": "",
+		}
+
+	now = now_datetime()
+	start_dt = get_datetime(f"{quiz_row.quiz_start_date} {quiz_row.quiz_start_time}")
+	end_dt = get_datetime(f"{quiz_row.quiz_end_date} {quiz_row.quiz_end_time}")
+
+	if now < start_dt:
+		status = "upcoming"
+		is_available = False
+		can_start = False
+		message = _("Quiz has not started yet.")
+	elif now > end_dt:
+		status = "expired"
+		is_available = False
+		can_start = False
+		message = _("Quiz has expired.")
+	else:
+		status = "available"
+		is_available = True
+		can_start = True
+		message = _("Quiz is currently open.")
+
+	# Check active attempt for current user
+	active_attempt = None
+	user = frappe.session.user
+	if user and user != "Guest":
+		attempt_row = frappe.db.get_value(
+			"LMS Quiz Attempt",
+			{"quiz": quiz, "member": user, "status": "In Progress"},
+			["name", "start_time", "deadline", "saved_answers"],
+			as_dict=True,
+		)
+		if attempt_row:
+			deadline = get_datetime(attempt_row.deadline)
+			remaining_sec = int((deadline - now).total_seconds())
+			if remaining_sec > 0:
+				active_attempt = {
+					"name": attempt_row.name,
+					"start_time": str(attempt_row.start_time),
+					"deadline": str(attempt_row.deadline),
+					"remaining_seconds": remaining_sec,
+					"saved_answers": attempt_row.saved_answers or "[]",
+					"is_grace_period": False,
+				}
+			else:
+				# Check late submission grace period
+				allow_late = quiz_row.allow_late_submission
+				grace_mins = cint(quiz_row.late_submission_grace_period or 5)
+				grace_deadline = deadline + timedelta(minutes=grace_mins)
+				if allow_late and now <= grace_deadline:
+					active_attempt = {
+						"name": attempt_row.name,
+						"start_time": str(attempt_row.start_time),
+						"deadline": str(attempt_row.deadline),
+						"remaining_seconds": 0,
+						"is_grace_period": True,
+						"saved_answers": attempt_row.saved_answers or "[]",
+					}
+				else:
+					attempt_doc = frappe.get_doc("LMS Quiz Attempt", attempt_row.name)
+					auto_finalize_expired_attempt(attempt_doc, quiz_row)
+
+	return {
+		"is_scheduled": True,
+		"status": status,
+		"is_available": is_available,
+		"can_start": can_start,
+		"message": message,
+		"start_datetime": str(start_dt),
+		"end_datetime": str(end_dt),
+		"duration": cint(quiz_row.duration),
+		"allow_late_submission": bool(quiz_row.allow_late_submission),
+		"late_submission_grace_period": cint(quiz_row.late_submission_grace_period or 5),
+		"server_time": str(now),
+		"timezone": get_system_timezone(),
+		"active_attempt": active_attempt,
+	}
+
+
+@frappe.whitelist()
+def start_quiz_attempt(quiz: str) -> dict:
+	if not isinstance(quiz, str):
+		frappe.throw(_("Invalid quiz."), frappe.ValidationError)
+
+	from lms.lms.permissions import can_access_quiz
+
+	if not can_access_quiz(quiz):
+		frappe.throw(_("You are not authorized to take this quiz."), frappe.PermissionError)
+
+	quiz_row = frappe.db.get_value(
+		"LMS Quiz",
+		quiz,
+		[
+			"name",
+			"total_marks",
+			"passing_percentage",
+			"enable_quiz_scheduling",
+			"quiz_start_date",
+			"quiz_start_time",
+			"quiz_end_date",
+			"quiz_end_time",
+			"duration",
+			"allow_late_submission",
+			"late_submission_grace_period",
+			"max_attempts",
+		],
+		as_dict=True,
+	)
+	if not quiz_row:
+		frappe.throw(_("Quiz not found."), frappe.ValidationError)
+
+	if not quiz_row.enable_quiz_scheduling:
+		return {"is_scheduled": False}
+
+	now = now_datetime()
+	start_dt = get_datetime(f"{quiz_row.quiz_start_date} {quiz_row.quiz_start_time}")
+	end_dt = get_datetime(f"{quiz_row.quiz_end_date} {quiz_row.quiz_end_time}")
+
+	if now < start_dt:
+		frappe.throw(_("Quiz has not started yet."), frappe.ValidationError)
+
+	user = frappe.session.user
+
+	# Check for existing in-progress attempt
+	existing_attempt = frappe.db.get_value(
+		"LMS Quiz Attempt",
+		{"quiz": quiz, "member": user, "status": "In Progress"},
+		["name", "start_time", "deadline", "saved_answers"],
+		as_dict=True,
+	)
+	if existing_attempt:
+		deadline = get_datetime(existing_attempt.deadline)
+		remaining = int((deadline - now).total_seconds())
+		if remaining > 0:
+			return {
+				"attempt": existing_attempt.name,
+				"start_time": str(existing_attempt.start_time),
+				"deadline": str(existing_attempt.deadline),
+				"remaining_seconds": remaining,
+				"saved_answers": existing_attempt.saved_answers or "[]",
+				"is_resumed": True,
+				"is_grace_period": False,
+			}
+		else:
+			# Check grace period
+			if quiz_row.allow_late_submission:
+				grace_mins = cint(quiz_row.late_submission_grace_period or 5)
+				if now <= deadline + timedelta(minutes=grace_mins):
+					return {
+						"attempt": existing_attempt.name,
+						"start_time": str(existing_attempt.start_time),
+						"deadline": str(existing_attempt.deadline),
+						"remaining_seconds": 0,
+						"is_grace_period": True,
+						"saved_answers": existing_attempt.saved_answers or "[]",
+						"is_resumed": True,
+					}
+			attempt_doc = frappe.get_doc("LMS Quiz Attempt", existing_attempt.name)
+			auto_finalize_expired_attempt(attempt_doc, quiz_row)
+
+	# If no active attempt and closing time has passed, do not allow starting a new attempt
+	if now > end_dt:
+		frappe.throw(
+			_("Quiz has already closed and is no longer accepting new attempts."),
+			frappe.ValidationError,
+		)
+
+	# Validate attempt limit
+	if quiz_row.max_attempts:
+		submissions_count = frappe.db.count(
+			"LMS Quiz Submission", filters={"quiz": quiz, "member": user}
+		)
+		if submissions_count >= quiz_row.max_attempts:
+			from lms.lms.doctype.lms_quiz_submission.lms_quiz_submission import (
+				MaximumAttemptsExceededError,
+			)
+
+			frappe.throw(
+				_("You have exceeded the maximum number of attempts ({0}) for this quiz").format(
+					quiz_row.max_attempts
+				),
+				MaximumAttemptsExceededError,
+			)
+
+	# Calculate effective deadline: earlier of (now + duration) and (closing datetime)
+	start_time = now
+	effective_deadline = end_dt
+	if quiz_row.duration and cint(quiz_row.duration) > 0:
+		duration_deadline = start_time + timedelta(minutes=cint(quiz_row.duration))
+		effective_deadline = min(duration_deadline, end_dt)
+
+	remaining_seconds = max(0, int((effective_deadline - start_time).total_seconds()))
+
+	attempt = frappe.new_doc("LMS Quiz Attempt")
+	attempt.update(
+		{
+			"quiz": quiz,
+			"member": user,
+			"start_time": start_time,
+			"deadline": effective_deadline,
+			"status": "In Progress",
+			"saved_answers": "[]",
+		}
+	)
+	attempt.save(ignore_permissions=True)
+	frappe.db.commit()
+
+	return {
+		"attempt": attempt.name,
+		"start_time": str(start_time),
+		"deadline": str(effective_deadline),
+		"remaining_seconds": remaining_seconds,
+		"saved_answers": "[]",
+		"is_resumed": False,
+		"is_grace_period": False,
+	}
+
+
+@frappe.whitelist()
+def save_quiz_progress(quiz: str, results: str) -> dict:
+	if not isinstance(quiz, str):
+		frappe.throw(_("Invalid quiz."), frappe.ValidationError)
+
+	from lms.lms.permissions import can_access_quiz
+
+	if not can_access_quiz(quiz):
+		frappe.throw(_("You are not authorized to access this quiz."), frappe.PermissionError)
+
+	user = frappe.session.user
+	attempt_name = frappe.db.get_value(
+		"LMS Quiz Attempt",
+		{"quiz": quiz, "member": user, "status": "In Progress"},
+		"name",
+	)
+	if not attempt_name:
+		return {"status": "no_active_attempt"}
+
+	attempt_doc = frappe.get_doc("LMS Quiz Attempt", attempt_name)
+	now = now_datetime()
+	deadline = get_datetime(attempt_doc.deadline)
+
+	# Allow saving if still within deadline or reasonable grace period
+	if now <= deadline + timedelta(minutes=10):
+		attempt_doc.saved_answers = results
+		attempt_doc.save(ignore_permissions=True)
+		frappe.db.commit()
+		return {"status": "saved"}
+
+	return {"status": "expired"}
+
+
+def auto_finalize_expired_attempt(attempt_doc, quiz_details):
+	"""Finalize an expired attempt by grading whatever answers were saved on server before deadline."""
+	if attempt_doc.status == "Completed" or attempt_doc.submission:
+		return
+	attempt_doc.status = "Expired"
+	saved_results = []
+	try:
+		if attempt_doc.saved_answers:
+			saved_results = json.loads(attempt_doc.saved_answers)
+	except Exception:
+		saved_results = []
+
+	if saved_results and isinstance(saved_results, list):
+		try:
+			_validate_quiz_results(saved_results)
+			data = process_results(saved_results, quiz_details)
+			submission = create_submission(
+				quiz_details.name if hasattr(quiz_details, "name") else quiz_details.get("name"),
+				data["results"],
+				quiz_details.total_marks if hasattr(quiz_details, "total_marks") else quiz_details.get("total_marks"),
+				quiz_details.passing_percentage if hasattr(quiz_details, "passing_percentage") else quiz_details.get("passing_percentage"),
+				started_at=attempt_doc.start_time,
+				submitted_at=get_datetime(attempt_doc.deadline),
+				is_late=0,
+				attempt=attempt_doc.name,
+			)
+			attempt_doc.submission = submission.name
+		except Exception:
+			pass
+	attempt_doc.save(ignore_permissions=True)
+	frappe.db.commit()
+

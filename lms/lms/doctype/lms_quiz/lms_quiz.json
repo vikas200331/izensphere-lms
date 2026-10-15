@@ -21,6 +21,16 @@
   "column_break_clsh",
   "enable_negative_marking",
   "marks_to_cut",
+  "section_break_schedule",
+  "enable_quiz_scheduling",
+  "column_break_sched_1",
+  "quiz_start_date",
+  "quiz_start_time",
+  "column_break_sched_2",
+  "quiz_end_date",
+  "quiz_end_time",
+  "allow_late_submission",
+  "late_submission_grace_period",
   "section_break_sbjx",
   "questions",
   "section_break_3",
@@ -148,6 +158,63 @@
    "fieldname": "marks_to_cut",
    "fieldtype": "Int",
    "label": "Marks To Cut"
+  },
+  {
+   "fieldname": "section_break_schedule",
+   "fieldtype": "Section Break",
+   "label": "Quiz Schedule & Timing"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_quiz_scheduling",
+   "fieldtype": "Check",
+   "label": "Enable Quiz Scheduling"
+  },
+  {
+   "fieldname": "column_break_sched_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.enable_quiz_scheduling",
+   "fieldname": "quiz_start_date",
+   "fieldtype": "Date",
+   "label": "Quiz Start Date"
+  },
+  {
+   "depends_on": "eval:doc.enable_quiz_scheduling",
+   "fieldname": "quiz_start_time",
+   "fieldtype": "Time",
+   "label": "Quiz Start Time"
+  },
+  {
+   "fieldname": "column_break_sched_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.enable_quiz_scheduling",
+   "fieldname": "quiz_end_date",
+   "fieldtype": "Date",
+   "label": "Quiz End Date"
+  },
+  {
+   "depends_on": "eval:doc.enable_quiz_scheduling",
+   "fieldname": "quiz_end_time",
+   "fieldtype": "Time",
+   "label": "Quiz End Time"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.enable_quiz_scheduling",
+   "fieldname": "allow_late_submission",
+   "fieldtype": "Check",
+   "label": "Allow Late Submission"
+  },
+  {
+   "default": "5",
+   "depends_on": "eval:doc.enable_quiz_scheduling && doc.allow_late_submission",
+   "fieldname": "late_submission_grace_period",
+   "fieldtype": "Int",
+   "label": "Late Submission Grace Period (in minutes)"
   }
  ],
  "grid_page_length": 50,
@@ -155,6 +222,10 @@
  "links": [
   {
    "link_doctype": "LMS Quiz Submission",
+   "link_fieldname": "quiz"
+  },
+  {
+   "link_doctype": "LMS Quiz Attempt",
    "link_fieldname": "quiz"
   }
  ],

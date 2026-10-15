@@ -18,7 +18,11 @@
   "percentage",
   "passing_percentage",
   "section_break_6",
-  "result"
+  "result",
+  "attempt",
+  "started_at",
+  "submitted_at",
+  "is_late"
  ],
  "fields": [
   {
@@ -111,6 +115,32 @@
    "fieldname": "quiz_title",
    "fieldtype": "Data",
    "label": "Quiz Title",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attempt",
+   "fieldtype": "Link",
+   "label": "Quiz Attempt",
+   "options": "LMS Quiz Attempt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "label": "Started At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "submitted_at",
+   "fieldtype": "Datetime",
+   "label": "Submitted At",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_late",
+   "fieldtype": "Check",
+   "label": "Is Late Submission",
    "read_only": 1
   }
  ],

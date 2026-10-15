@@ -75,12 +75,102 @@
 			</ol>
 		</div>
 
+		<!-- Scheduled Quiz Schedule & Availability Banner -->
+		<div
+			v-if="quiz.data.enable_quiz_scheduling && scheduleInfo && activeQuestion == 0"
+			class="mb-6 rounded-lg border bg-surface-white p-5 shadow-sm space-y-4"
+		>
+			<div class="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+				<div>
+					<h3 class="text-base font-semibold text-ink-gray-9">
+						{{ __('Quiz Schedule & Availability') }}
+					</h3>
+					<p class="text-xs text-ink-gray-5">
+						{{ __('Site Timezone: {0}').format(scheduleInfo.timezone || 'Server Time') }}
+					</p>
+				</div>
+				<Badge
+					v-if="scheduleInfo.status === 'upcoming'"
+					theme="amber"
+					size="lg"
+					:label="__('Upcoming')"
+				/>
+				<Badge
+					v-else-if="scheduleInfo.status === 'available'"
+					theme="green"
+					size="lg"
+					:label="__('Available Now')"
+				/>
+				<Badge
+					v-else
+					theme="red"
+					size="lg"
+					:label="__('Closed / Expired')"
+				/>
+			</div>
+
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 text-sm">
+				<div class="space-y-1">
+					<span class="text-xs font-medium uppercase tracking-wider text-ink-gray-5">
+						{{ __('Opens At') }}
+					</span>
+					<div class="font-medium text-ink-gray-9">
+						{{ formatDateTime(scheduleInfo.start_datetime) }}
+					</div>
+				</div>
+				<div class="space-y-1">
+					<span class="text-xs font-medium uppercase tracking-wider text-ink-gray-5">
+						{{ __('Closes At') }}
+					</span>
+					<div class="font-medium text-ink-gray-9">
+						{{ formatDateTime(scheduleInfo.end_datetime) }}
+					</div>
+				</div>
+				<div class="space-y-1">
+					<span class="text-xs font-medium uppercase tracking-wider text-ink-gray-5">
+						{{ __('Attempt Duration') }}
+					</span>
+					<div class="font-medium text-ink-gray-9">
+						{{ quiz.data.duration }} {{ __('minutes') }}
+					</div>
+				</div>
+				<div class="space-y-1">
+					<span class="text-xs font-medium uppercase tracking-wider text-ink-gray-5">
+						{{ __('Late Submission') }}
+					</span>
+					<div class="font-medium text-ink-gray-9">
+						{{
+							scheduleInfo.allow_late_submission
+								? __('Allowed (+{0} min grace period)').format(scheduleInfo.late_submission_grace_period)
+								: __('Not Allowed')
+						}}
+					</div>
+				</div>
+			</div>
+
+			<div
+				v-if="scheduleInfo.active_attempt && (scheduleInfo.active_attempt.remaining_seconds > 0 || scheduleInfo.active_attempt.is_grace_period)"
+				class="rounded-md bg-surface-amber-2 p-3 text-sm text-ink-amber-9 flex flex-wrap items-center justify-between gap-2"
+			>
+				<div>
+					<span class="font-semibold">{{ __('Attempt in Progress') }}:</span>
+					{{ __('You have an ongoing attempt. Remaining answers and time will be restored.') }}
+				</div>
+				<div class="font-bold">
+					{{ __('Time Left: {0}').format(formatTimer(scheduleInfo.active_attempt.remaining_seconds)) }}
+				</div>
+			</div>
+		</div>
+
 		<div v-if="quiz.data.duration" class="flex flex-col gap-x-1 my-4 px-2">
-			<div class="mb-2">
-				<span class="text-ink-gray-9"> {{ __('Time') }}: </span>
-				<span class="font-semibold text-ink-gray-9">
-					{{ formatTimer(timer) }}
-				</span>
+			<div class="mb-2 flex items-center justify-between">
+				<div>
+					<span class="text-ink-gray-9"> {{ __('Time') }}: </span>
+					<span class="font-semibold" :class="timer < 60 ? 'text-ink-red-6' : 'text-ink-gray-9'">
+						{{ formatTimer(timer) }}
+					</span>
+				</div>
+				<Badge v-if="isGracePeriodActive" theme="amber" :label="__('Grace Period Active')" />
 			</div>
 			<ProgressBar :progress="timerProgress" />
 		</div>
@@ -91,18 +181,49 @@
 					{{ quiz.data.title }}
 				</div>
 				<template v-if="questions.length">
-					<div class="flex items-center justify-center gap-x-2 mt-4">
+					<div
+						v-if="quiz.data.enable_quiz_scheduling && scheduleInfo?.status === 'upcoming'"
+						class="mt-4 leading-5 text-ink-gray-7"
+					>
+						{{ __('Quiz has not started yet. It will open at {0}.').format(formatDateTime(scheduleInfo?.start_datetime)) }}
+					</div>
+					<div
+						v-else-if="
+							quiz.data.enable_quiz_scheduling &&
+							scheduleInfo?.status === 'expired' &&
+							!activeAttempt
+						"
+						class="mt-4 leading-5 text-ink-red-6 font-medium"
+					>
+						{{ __('Quiz has expired. New attempts are no longer accepted.') }}
+					</div>
+					<div
+						v-else-if="
+							quiz.data.max_attempts &&
+							attempts.data?.length >= quiz.data.max_attempts
+						"
+						class="leading-5 text-ink-gray-7 mt-4"
+					>
+						{{
+							__(
+								'You have already exceeded the maximum number of attempts allowed for this quiz.'
+							)
+						}}
+					</div>
+					<div v-else class="flex items-center justify-center gap-x-2 mt-4">
 						<Button
-							v-if="
-								!quiz.data.max_attempts ||
-								attempts.data?.length < quiz.data.max_attempts
-							"
 							variant="solid"
 							class="text-p-base-medium"
 							@click="startQuiz"
 						>
 							<span>
-								{{ inVideo ? __('Start the Quiz') : __('Start') }}
+								{{
+									activeAttempt
+										? __('Resume Quiz')
+										: inVideo
+										? __('Start the Quiz')
+										: __('Start')
+								}}
 							</span>
 						</Button>
 						<Button
@@ -112,19 +233,6 @@
 						>
 							{{ __('Resume Video') }}
 						</Button>
-					</div>
-					<div
-						v-if="
-							quiz.data.max_attempts &&
-							attempts.data?.length >= quiz.data.max_attempts
-						"
-						class="leading-5 text-ink-gray-7"
-					>
-						{{
-							__(
-								'You have already exceeded the maximum number of attempts allowed for this quiz.'
-							)
-						}}
 					</div>
 				</template>
 				<div v-else class="mt-4 leading-5 text-ink-gray-7">
@@ -493,6 +601,8 @@ import {
 	ref,
 	watch,
 } from 'vue'
+import { useDebounceFn } from '@vueuse/core'
+import dayjs from '@/utils/dayjs'
 import { timeAgo } from '@/utils/format'
 import ProgressBar from '@/components/ProgressBar.vue'
 import ResponsiveListView from '@/components/ResponsiveListView.vue'
@@ -510,8 +620,20 @@ const reviewQuestions = ref([])
 const showSubmissionConfirmation = ref(false)
 const possibleAnswer = ref(null)
 const timer = ref(0)
+const activeAttempt = ref(null)
+const scheduleInfo = ref(null)
+const isGracePeriodActive = ref(false)
 let timerInterval = null
 let submitTimeout = null
+
+const formatDateTime = (dtStr) => {
+	if (!dtStr) return ''
+	try {
+		return dayjs(dtStr).format('YYYY-MM-DD hh:mm A')
+	} catch (e) {
+		return dtStr
+	}
+}
 
 const props = defineProps({
 	quizName: {
@@ -541,6 +663,18 @@ onUnmounted(() => {
 
 const handlePageHide = () => {
 	if (activeQuestion.value > 0 && !quizSubmission.data) {
+		if (quiz.data?.enable_quiz_scheduling) {
+			const params = new URLSearchParams({
+				quiz: quiz.data.name,
+				results: localStorage.getItem(quiz.data.title) || '[]',
+			})
+			navigator.sendBeacon(
+				'/api/method/lms.lms.doctype.lms_quiz.lms_quiz.save_quiz_progress?' +
+					params.toString()
+			)
+			return
+		}
+
 		const params = new URLSearchParams({
 			quiz: quiz.data.name,
 			results: localStorage.getItem(quiz.data.title) || '[]',
@@ -578,13 +712,36 @@ const quiz = createResource({
 		const quizDoc = data?.quiz || {}
 		quizDoc.duration = parseInt(quizDoc.duration)
 		questionsByName.value = data?.questions_by_name || {}
+		scheduleInfo.value = data?.schedule_info || null
 		return quizDoc
 	},
 	onSuccess() {
 		populateQuestions()
 		setupTimer()
+		restoreActiveAttempt()
 	},
 })
+
+const restoreActiveAttempt = () => {
+	if (!quiz.data?.enable_quiz_scheduling || !scheduleInfo.value?.active_attempt) return
+	const attempt = scheduleInfo.value.active_attempt
+	activeAttempt.value = attempt.name
+	timer.value = attempt.remaining_seconds
+	isGracePeriodActive.value = Boolean(attempt.is_grace_period)
+
+	if (attempt.saved_answers && attempt.saved_answers !== '[]') {
+		try {
+			localStorage.setItem(quiz.data.title, attempt.saved_answers)
+		} catch (e) {
+			// ignore parse error
+		}
+	}
+
+	if (attempt.remaining_seconds > 0 || attempt.is_grace_period) {
+		activeQuestion.value = 1
+		startTimer()
+	}
+}
 
 const populateQuestions = () => {
 	const data = quiz.data
@@ -711,6 +868,7 @@ const quizSubmission = createResource({
 		return {
 			quiz: quiz.data.name,
 			results: localStorage.getItem(quiz.data.title) || '[]',
+			attempt: activeAttempt.value || undefined,
 		}
 	},
 })
@@ -798,6 +956,37 @@ watch(
 )
 
 const startQuiz = () => {
+	if (quiz.data?.enable_quiz_scheduling) {
+		call('lms.lms.doctype.lms_quiz.lms_quiz.start_quiz_attempt', {
+			quiz: props.quizName,
+		})
+			.then((res) => {
+				activeAttempt.value = res.attempt
+				timer.value = res.remaining_seconds
+				isGracePeriodActive.value = Boolean(res.is_grace_period)
+				if (res.saved_answers && res.saved_answers !== '[]') {
+					try {
+						localStorage.setItem(
+							quiz.data.title,
+							typeof res.saved_answers === 'string'
+								? res.saved_answers
+								: JSON.stringify(res.saved_answers)
+						)
+					} catch (e) {}
+				} else if (!res.is_resumed) {
+					localStorage.removeItem(quiz.data.title)
+				}
+				activeQuestion.value = 1
+				startTimer()
+			})
+			.catch((err) => {
+				const msg =
+					err.messages?.[0] || err?.message || __('Could not start quiz.')
+				toast.error(msg)
+			})
+		return
+	}
+
 	activeQuestion.value = 1
 	localStorage.removeItem(quiz.data.title)
 	if (quiz.data.duration) startTimer()
@@ -868,6 +1057,14 @@ const checkAnswer = () => {
 	})
 }
 
+const syncProgressDebounced = useDebounceFn(() => {
+	if (!quiz.data?.enable_quiz_scheduling || !activeAttempt.value) return
+	call('lms.lms.doctype.lms_quiz.lms_quiz.save_quiz_progress', {
+		quiz: props.quizName,
+		results: localStorage.getItem(quiz.data.title) || '[]',
+	})
+}, 1000)
+
 const addToLocalStorage = () => {
 	let quizData = JSON.parse(localStorage.getItem(quiz.data.title))
 	let questionData = {
@@ -887,6 +1084,9 @@ const addToLocalStorage = () => {
 		quizData = [questionData]
 	}
 	localStorage.setItem(quiz.data.title, JSON.stringify(quizData))
+	if (quiz.data?.enable_quiz_scheduling && activeAttempt.value) {
+		syncProgressDebounced()
+	}
 }
 
 const nextQuestion = () => {
@@ -955,6 +1155,8 @@ const createSubmission = () => {
 
 const resetQuiz = () => {
 	activeQuestion.value = 0
+	activeAttempt.value = null
+	isGracePeriodActive.value = false
 	selectedOptions.value.splice(
 		0,
 		selectedOptions.value.length,

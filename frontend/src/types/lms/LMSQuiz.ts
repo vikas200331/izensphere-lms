@@ -39,4 +39,18 @@ export interface LMSQuiz {
 	enable_negative_marking?: 0 | 1
 	/**	Marks To Cut : Int	*/
 	marks_to_cut?: number
+	/**	Enable Quiz Scheduling : Check	*/
+	enable_quiz_scheduling?: 0 | 1
+	/**	Quiz Start Date : Date	*/
+	quiz_start_date?: string
+	/**	Quiz Start Time : Time	*/
+	quiz_start_time?: string
+	/**	Quiz End Date : Date	*/
+	quiz_end_date?: string
+	/**	Quiz End Time : Time	*/
+	quiz_end_time?: string
+	/**	Allow Late Submission : Check	*/
+	allow_late_submission?: 0 | 1
+	/**	Late Submission Grace Period (in minutes) : Int	*/
+	late_submission_grace_period?: number
 }

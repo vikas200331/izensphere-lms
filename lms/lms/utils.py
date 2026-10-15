@@ -1672,8 +1672,17 @@ def get_quiz_with_questions(quiz: str) -> dict:
 			ignore_permissions=True,
 		)
 		questions_by_name = {row["name"]: row for row in rows}
+	schedule_info = None
+	if quiz_doc.get("enable_quiz_scheduling"):
+		from lms.lms.doctype.lms_quiz.lms_quiz import get_quiz_schedule_info
 
-	return {"quiz": quiz_doc, "questions_by_name": questions_by_name}
+		schedule_info = get_quiz_schedule_info(quiz)
+
+	return {
+		"quiz": quiz_doc,
+		"questions_by_name": questions_by_name,
+		"schedule_info": schedule_info,
+	}
 
 
 @frappe.whitelist(allow_guest=True)
