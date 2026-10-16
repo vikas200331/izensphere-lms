@@ -80,6 +80,33 @@
 					</div>
 
 					<div class="flex items-center gap-2 flex-wrap">
+						<!-- Save Draft -->
+						<Button
+							v-if="canTeacherSaveDraft"
+							variant="outline"
+							size="sm"
+							:loading="isSavingDraft"
+							@click="manualSaveDraft"
+						>
+							<template #prefix>
+								<span class="lucide-save size-3.5" />
+							</template>
+							{{ __('Save Draft') }}
+						</Button>
+
+						<!-- Preview Content -->
+						<Button
+							v-if="canPreviewLesson"
+							variant="outline"
+							size="sm"
+							@click="previewLesson"
+						>
+							<template #prefix>
+								<span class="lucide-eye size-3.5" />
+							</template>
+							{{ __('Preview Content') }}
+						</Button>
+
 						<!-- Option A: Teacher Can Publish -->
 						<Button
 							v-if="canTeacherPublishThis"
@@ -95,7 +122,7 @@
 							{{ __('Publish New Content to Students') }}
 						</Button>
 
-						<!-- Option B: Submit for Principal Approval -->
+						<!-- Option B: Submit for Principal Approval / Resubmit -->
 						<Button
 							v-if="canTeacherSubmitThis"
 							variant="solid"
@@ -107,7 +134,7 @@
 							<template #prefix>
 								<span class="lucide-file-check size-3.5" />
 							</template>
-							{{ __('Submit for Principal Approval') }}
+							{{ currentReleaseStatus === 'Rejected' ? __('Resubmit for Approval') : __('Submit for Principal Approval') }}
 						</Button>
 
 						<!-- Principal Approve and Publish -->
@@ -125,7 +152,7 @@
 							{{ __('Approve and Publish') }}
 						</Button>
 
-						<!-- Principal Reject -->
+						<!-- Principal Reject / Request Changes -->
 						<Button
 							v-if="canPrincipalRejectThis"
 							variant="outline"
@@ -137,7 +164,7 @@
 							<template #prefix>
 								<span class="lucide-x size-3.5" />
 							</template>
-							{{ __('Reject') }}
+							{{ __('Reject / Request Changes') }}
 						</Button>
 					</div>
 				</div>
@@ -216,7 +243,7 @@
 
 		<Dialog
 			v-model:open="showRejectModal"
-			:title="__('Reject Lesson Content')"
+			:title="__('Reject / Request Changes')"
 			:actions="[
 				{
 					label: __('Cancel'),
@@ -224,7 +251,7 @@
 					onClick: ({ close }) => close(),
 				},
 				{
-					label: __('Confirm Rejection'),
+					label: __('Confirm Rejection / Request Changes'),
 					variant: 'solid',
 					theme: 'red',
 					onClick: ({ close }) => {
@@ -417,12 +444,12 @@ const releaseStatusLabel = computed(() => {
 		return __('Pending Principal Approval')
 	}
 	if (currentReleaseStatus.value === 'Rejected') {
-		return __('Rejected')
+		return __('Rejected / Changes Requested')
 	}
 	if (currentReleaseStatus.value === 'Released') {
-		return __('Released')
+		return __('Published')
 	}
-	return __('Draft (Unreleased)')
+	return __('Draft')
 })
 
 const releaseBadgeTheme = computed(() => {
@@ -490,6 +517,36 @@ const canPrincipalRejectThis = computed(() => {
 	if (contentReleaseMode.value === 'None') return false
 	return currentReleaseStatus.value === 'Pending Principal Approval'
 })
+
+const isSavingDraft = ref(false)
+function manualSaveDraft() {
+	if (lessonDetails.data?.lesson) {
+		isSavingDraft.value = true
+		saveLesson({ flush: true })
+		setTimeout(() => {
+			isSavingDraft.value = false
+			toast({
+				title: __('Success'),
+				text: __('Draft saved successfully'),
+				icon: 'check',
+			})
+		}, 400)
+	}
+}
+
+const canTeacherSaveDraft = computed(() => {
+	return Boolean(lessonDetails.data?.lesson) && (currentReleaseStatus.value === 'Draft' || currentReleaseStatus.value === 'Rejected' || hasUnreleasedEdits.value || isDirty.value)
+})
+
+const canPreviewLesson = computed(() => {
+	return Boolean(lessonDetails.data?.lesson?.name)
+})
+
+function previewLesson() {
+	if (!props.courseName || !props.chapterNumber || !props.lessonNumber) return
+	const url = `/courses/${props.courseName}/learn/${props.chapterNumber}-${props.lessonNumber}`
+	window.open(url, '_blank')
+}
 
 const actionLoading = ref(false)
 const showRejectModal = ref(false)

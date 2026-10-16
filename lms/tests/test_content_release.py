@@ -544,6 +544,61 @@ class TestContentRelease(unittest.TestCase):
 		frappe.delete_doc("LMS Quiz", sec_quiz.name, force=True)
 		frappe.delete_doc("Course Chapter", draft_ch.name, force=True)
 
+	def test_13_principal_dashboard_pending_content(self):
+		"""13. Newly submitted content appears in Principal Dashboard API, can be approved/rejected via process_approval, and rejects student access."""
+		frappe.db.set_value("LMS Course", self.course, "content_release_mode", "Principal Approval Required")
+		frappe.set_user(self.teacher)
+
+		# Add a new chapter and lesson
+		p_ch = frappe.new_doc("Course Chapter")
+		p_ch.title = "Dashboard Chapter"
+		p_ch.course = self.course
+		p_ch.insert(ignore_permissions=True)
+
+		p_l = frappe.new_doc("Course Lesson")
+		p_l.title = "Dashboard Lesson"
+		p_l.chapter = p_ch.name
+		p_l.course = self.course
+		p_l.content = '{"blocks": [{"type": "paragraph", "data": {"text": "Hello Principal"}}]}'
+		p_l.insert(ignore_permissions=True)
+
+		# Submit for approval
+		submit_content_item("Course Lesson", p_l.name)
+		self.assertEqual(frappe.db.get_value("Course Lesson", p_l.name, "release_status"), "Pending Principal Approval")
+
+		# Student cannot call get_pending_content_for_principal
+		frappe.set_user(self.student)
+		from lms.lms.api import get_pending_content_for_principal, process_approval
+		with self.assertRaises(frappe.PermissionError):
+			get_pending_content_for_principal()
+
+		# Principal calls get_pending_content_for_principal
+		frappe.set_user(self.principal)
+		pending = get_pending_content_for_principal()
+		lesson_keys = [it["name"] for it in pending if it["doctype"] == "Course Lesson"]
+		self.assertIn(p_l.name, lesson_keys)
+
+		# Check lesson item structure
+		item = next(it for it in pending if it["name"] == p_l.name)
+		self.assertEqual(item["content_type"], "Lesson")
+		self.assertEqual(item["title"], "Dashboard Lesson")
+		self.assertEqual(item["course"], self.course)
+		self.assertEqual(item["chapter"], p_ch.name)
+
+		# Principal approves via process_approval
+		process_approval("Course Lesson", p_l.name, "Approve")
+		self.assertEqual(frappe.db.get_value("Course Lesson", p_l.name, "release_status"), "Released")
+
+		# Approved item is no longer in pending list
+		pending_after = get_pending_content_for_principal()
+		lesson_keys_after = [it["name"] for it in pending_after if it["doctype"] == "Course Lesson"]
+		self.assertNotIn(p_l.name, lesson_keys_after)
+
+		# Cleanup
+		frappe.set_user("Administrator")
+		frappe.delete_doc("Course Lesson", p_l.name, force=True)
+		frappe.delete_doc("Course Chapter", p_ch.name, force=True)
+
 	@classmethod
 	def tearDownClass(cls):
 		frappe.set_user("Administrator")

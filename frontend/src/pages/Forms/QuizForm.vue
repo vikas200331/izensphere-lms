@@ -91,6 +91,19 @@
 			</div>
 
 			<div class="flex items-center gap-2 flex-wrap">
+				<!-- Preview Content -->
+				<Button
+					v-if="quizDetails.doc?.name"
+					variant="outline"
+					size="sm"
+					@click="previewQuiz"
+				>
+					<template #prefix>
+						<span class="lucide-eye size-3.5" />
+					</template>
+					{{ __('Preview Content') }}
+				</Button>
+
 				<!-- Option A: Teacher Can Publish -->
 				<Button
 					v-if="canTeacherPublishThis"
@@ -118,7 +131,7 @@
 					<template #prefix>
 						<span class="lucide-file-check size-3.5" />
 					</template>
-					{{ __('Submit for Principal Approval') }}
+					{{ currentReleaseStatus === 'Rejected' ? __('Resubmit for Approval') : __('Submit for Principal Approval') }}
 				</Button>
 
 				<!-- Principal Approve and Publish -->
@@ -136,7 +149,7 @@
 					{{ __('Approve and Publish') }}
 				</Button>
 
-				<!-- Principal Reject -->
+				<!-- Principal Reject / Request Changes -->
 				<Button
 					v-if="canPrincipalRejectThis"
 					variant="outline"
@@ -148,7 +161,7 @@
 					<template #prefix>
 						<span class="lucide-x size-3.5" />
 					</template>
-					{{ __('Reject') }}
+					{{ __('Reject / Request Changes') }}
 				</Button>
 			</div>
 		</div>
@@ -410,7 +423,7 @@
 	<Dialog
 		v-model="showRejectModal"
 		:options="{
-			title: __('Reject Content & Request Changes'),
+			title: __('Reject / Request Changes'),
 			actions: [
 				{
 					label: __('Cancel'),
@@ -418,7 +431,7 @@
 					onClick: ({ close }) => close(),
 				},
 				{
-					label: __('Reject Content'),
+					label: __('Confirm Rejection / Request Changes'),
 					variant: 'solid',
 					theme: 'red',
 					disabled: !rejectionReasonText.trim(),
@@ -531,17 +544,22 @@ const releaseBadgeTheme = computed(() => {
 const releaseStatusLabel = computed(() => {
 	switch (currentReleaseStatus.value) {
 		case 'Released':
-			return __('Released')
+			return __('Published')
 		case 'Draft':
-			return __('Draft (Hidden)')
+			return __('Draft')
 		case 'Pending Principal Approval':
 			return __('Pending Principal Approval')
 		case 'Rejected':
-			return __('Changes Requested')
+			return __('Rejected / Changes Requested')
 		default:
 			return currentReleaseStatus.value
 	}
 })
+
+function previewQuiz() {
+	if (!quizDetails.doc?.name) return
+	window.open(`/quiz/${quizDetails.doc.name}`, '_blank')
+}
 
 const releaseStatusSubtext = computed(() => {
 	switch (currentReleaseStatus.value) {

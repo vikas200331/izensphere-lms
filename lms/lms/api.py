@@ -2707,6 +2707,14 @@ def is_published_course(course: str) -> bool:
 
 @frappe.whitelist()
 def process_approval(doctype: str, docname: str, action: str, comments: str = ""):
+	if doctype in ["Course Lesson", "Course Chapter", "LMS Assessment", "LMS Quiz"]:
+		if action == "Approve":
+			return approve_content_item(doctype, docname)
+		elif action == "Reject":
+			return reject_content_item(doctype, docname, reason=comments)
+		else:
+			frappe.throw(_("Invalid action: {0}").format(action))
+
 	if doctype not in ["LMS Course", "LMS Batch"]:
 		frappe.throw("Invalid DocType")
 	
@@ -3657,3 +3665,129 @@ def _notify_author_rejected(doctype: str, docname: str, title: str, course_title
 			},
 			owner,
 		)
+
+
+@frappe.whitelist()
+def get_pending_content_for_principal() -> list:
+	"""Returns all content items across published courses and batches that are in 'Pending Principal Approval' status."""
+	user = frappe.session.user
+	roles = frappe.get_roles(user)
+	is_principal_or_admin = "Principal" in roles or "System Manager" in roles
+	if not is_principal_or_admin:
+		frappe.throw(_("Only Principals and Administrators can view pending content approvals."), frappe.PermissionError)
+
+	items = []
+
+	# 1. Course Lessons pending approval
+	lessons = frappe.get_all(
+		"Course Lesson",
+		filters={"release_status": "Pending Principal Approval"},
+		fields=["name", "title", "draft_title", "course", "chapter", "owner", "modified", "creation", "rejection_reason", "has_unreleased_edits"],
+		order_by="modified desc",
+	)
+	course_names = list({l.course for l in lessons if l.course})
+	courses_map = {}
+	if course_names:
+		courses_map = {c.name: c.title for c in frappe.get_all("LMS Course", filters={"name": ["in", course_names]}, fields=["name", "title"])}
+
+	chapter_names = list({l.chapter for l in lessons if l.chapter})
+	chapters_map = {}
+	if chapter_names:
+		chapters_map = {ch.name: ch.title for ch in frappe.get_all("Course Chapter", filters={"name": ["in", chapter_names]}, fields=["name", "title"])}
+
+	for l in lessons:
+		course_name = l.course or (frappe.db.get_value("Course Chapter", l.chapter, "course") if l.chapter else None)
+		course_title = courses_map.get(course_name) or (frappe.db.get_value("LMS Course", course_name, "title") if course_name else None) or course_name
+		chapter_title = chapters_map.get(l.chapter, l.chapter)
+		display_title = l.draft_title if (l.has_unreleased_edits and l.draft_title) else (l.title or _("Untitled Lesson"))
+		items.append({
+			"key": f"lesson:{l.name}",
+			"doctype": "Course Lesson",
+			"name": l.name,
+			"title": display_title,
+			"content_type": "Lesson",
+			"course": course_name,
+			"course_title": course_title,
+			"chapter": l.chapter,
+			"chapter_title": chapter_title,
+			"owner": l.owner,
+			"modified": str(l.modified),
+			"creation": str(l.creation),
+			"has_unreleased_edits": l.has_unreleased_edits,
+			"rejection_reason": l.rejection_reason,
+		})
+
+	# 2. Course Chapters pending approval
+	chapters = frappe.get_all(
+		"Course Chapter",
+		filters={"release_status": "Pending Principal Approval"},
+		fields=["name", "title", "course", "owner", "modified", "creation", "rejection_reason"],
+		order_by="modified desc",
+	)
+	for ch in chapters:
+		course_title = courses_map.get(ch.course) or frappe.db.get_value("LMS Course", ch.course, "title") or ch.course
+		items.append({
+			"key": f"chapter:{ch.name}",
+			"doctype": "Course Chapter",
+			"name": ch.name,
+			"title": ch.title or _("Untitled Chapter"),
+			"content_type": "Chapter",
+			"course": ch.course,
+			"course_title": course_title,
+			"chapter": ch.name,
+			"chapter_title": ch.title,
+			"owner": ch.owner,
+			"modified": str(ch.modified),
+			"creation": str(ch.creation),
+			"rejection_reason": ch.rejection_reason,
+		})
+
+	# 3. LMS Quizzes pending approval
+	quizzes = frappe.get_all(
+		"LMS Quiz",
+		filters={"release_status": "Pending Principal Approval"},
+		fields=["name", "title", "course", "lesson", "owner", "modified", "creation", "rejection_reason"],
+		order_by="modified desc",
+	)
+	for q in quizzes:
+		course_title = courses_map.get(q.course) or (frappe.db.get_value("LMS Course", q.course, "title") if q.course else None) or q.course
+		items.append({
+			"key": f"quiz:{q.name}",
+			"doctype": "LMS Quiz",
+			"name": q.name,
+			"title": q.title or _("Untitled Quiz"),
+			"content_type": "Quiz",
+			"course": q.course,
+			"course_title": course_title,
+			"lesson": q.lesson,
+			"owner": q.owner,
+			"modified": str(q.modified),
+			"creation": str(q.creation),
+			"rejection_reason": q.rejection_reason,
+		})
+
+	# 4. LMS Assessments pending approval
+	assessments = frappe.get_all(
+		"LMS Assessment",
+		filters={"release_status": "Pending Principal Approval"},
+		fields=["name", "parent", "assessment_type", "assessment_name", "owner", "modified", "creation", "rejection_reason"],
+		order_by="modified desc",
+	)
+	for a in assessments:
+		batch_title = frappe.db.get_value("LMS Batch", a.parent, "title") or a.parent
+		items.append({
+			"key": f"assessment:{a.name}",
+			"doctype": "LMS Assessment",
+			"name": a.name,
+			"title": f"{a.assessment_type}: {a.assessment_name}",
+			"content_type": "Assessment",
+			"batch": a.parent,
+			"batch_title": batch_title,
+			"owner": a.owner,
+			"modified": str(a.modified),
+			"creation": str(a.creation),
+			"rejection_reason": a.rejection_reason,
+		})
+
+	return items
+

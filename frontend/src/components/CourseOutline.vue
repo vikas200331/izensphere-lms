@@ -83,7 +83,24 @@
 						<template #prefix>
 							<span class="lucide-file-check size-3.5" />
 						</template>
-						{{ __('Submit for Principal Approval') }}
+						{{
+							unreleasedSummary.data.rejected_count > 0 && !unreleasedSummary.data.draft_count
+								? __('Resubmit for Approval')
+								: __('Submit for Principal Approval')
+						}}
+					</Button>
+
+					<!-- Principal Action: Preview Content -->
+					<Button
+						v-if="isPrincipal && course.data?.name"
+						variant="outline"
+						size="sm"
+						@click="previewCourse"
+					>
+						<template #prefix>
+							<span class="lucide-eye size-3.5" />
+						</template>
+						{{ __('Preview Content') }}
 					</Button>
 
 					<!-- Principal Action: Approve and Publish -->
@@ -101,7 +118,7 @@
 						{{ __('Approve and Publish') }}
 					</Button>
 
-					<!-- Principal Action: Reject -->
+					<!-- Principal Action: Reject / Request Changes -->
 					<Button
 						v-if="isPrincipal && unreleasedSummary.data.pending_count > 0"
 						variant="outline"
@@ -113,7 +130,7 @@
 						<template #prefix>
 							<span class="lucide-x size-3.5" />
 						</template>
-						{{ __('Reject') }}
+						{{ __('Reject / Request Changes') }}
 					</Button>
 				</div>
 			</div>
@@ -176,7 +193,7 @@
 		<Dialog
 			v-model="showRejectModal"
 			:options="{
-				title: __('Reject Submitted Content'),
+				title: __('Reject / Request Changes'),
 				actions: [
 					{
 						label: __('Cancel'),
@@ -185,7 +202,7 @@
 						},
 					},
 					{
-						label: __('Reject Content'),
+						label: __('Confirm Rejection / Request Changes'),
 						theme: 'red',
 						variant: 'solid',
 						onClick: submitRejection,
@@ -462,6 +479,11 @@ function submitRejection() {
 		reason: rejectionReasonInput.value,
 	})
 	showRejectModal.value = false
+}
+
+function previewCourse() {
+	if (!props.courseName) return
+	window.open(`/courses/${props.courseName}`, '_blank')
 }
 
 defineExpose({ openChapterForm, unreleasedSummary })
