@@ -140,6 +140,18 @@
 								variant="outline"
 							/>
 						</div>
+						<div class="space-y-1">
+							<Select
+								v-model="batchDetail.doc.content_release_mode"
+								:label="__('New Content Release Mode')"
+								:options="contentReleaseOptions"
+								variant="outline"
+								class="w-full"
+							/>
+							<p class="text-xs text-ink-gray-5">
+								{{ __('Controls whether newly added content in this batch requires teacher release or Principal approval.') }}
+							</p>
+						</div>
 					</div>
 				</div>
 
@@ -626,6 +638,13 @@ const mediumOptions = computed(() => {
 		},
 	]
 })
+
+const contentReleaseOptions = computed(() => [
+	{ label: __('None (Immediate Release)'), value: 'None' },
+	{ label: __('Teacher Can Publish'), value: 'Teacher Can Publish' },
+	{ label: __('Principal Approval Required'), value: 'Principal Approval Required' },
+	{ label: __('Teacher Choice'), value: 'Teacher Choice' },
+])
 
 defineExpose({
 	submitBatch,

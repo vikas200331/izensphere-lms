@@ -20,6 +20,7 @@
         "section_break_7",
         "published",
         "published_on",
+        "content_release_mode",
         "column_break_10",
         "upcoming",
         "featured",
@@ -197,6 +198,14 @@
             "fieldname": "published_on",
             "fieldtype": "Date",
             "label": "Published On"
+        },
+        {
+            "default": "None",
+            "description": "Release workflow for newly added content in an already published course",
+            "fieldname": "content_release_mode",
+            "fieldtype": "Select",
+            "label": "Content Release Mode",
+            "options": "None\nTeacher Can Publish\nPrincipal Approval Required\nTeacher Choice"
         },
         {
             "fieldname": "start_date",

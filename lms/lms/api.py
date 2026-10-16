@@ -3118,3 +3118,542 @@ def delete_category(category: str):
 
 	frappe.delete_doc("LMS Category", category)
 	return unlinked
+
+
+# Content Release Workflow APIs for already-published courses and batches
+
+def _get_container_for_content(doctype: str, name: str) -> tuple:
+	if doctype == "LMS Course":
+		return "LMS Course", name
+	elif doctype == "LMS Batch":
+		return "LMS Batch", name
+	elif doctype == "Course Chapter":
+		return "LMS Course", frappe.db.get_value("Course Chapter", name, "course")
+	elif doctype == "Course Lesson":
+		c = frappe.db.get_value("Course Lesson", name, "course") or frappe.db.get_value(
+			"Course Chapter", frappe.db.get_value("Course Lesson", name, "chapter"), "course"
+		)
+		return "LMS Course", c
+	elif doctype == "LMS Quiz":
+		c = frappe.db.get_value("LMS Quiz", name, "course")
+		if c:
+			return "LMS Course", c
+		lesson = frappe.db.get_value("Course Lesson", {"quiz_id": name}, ["course", "chapter"], as_dict=True)
+		if lesson:
+			c = lesson.course or frappe.db.get_value("Course Chapter", lesson.chapter, "course")
+			if c:
+				return "LMS Course", c
+	elif doctype == "LMS Assessment":
+		p = frappe.db.get_value("LMS Assessment", name, ["parent", "parenttype"], as_dict=True)
+		if p:
+			return p.parenttype or "LMS Batch", p.parent
+	return None, None
+
+
+def _get_course_for_content(doctype: str, name: str) -> str:
+	ctype, cname = _get_container_for_content(doctype, name)
+	return cname if ctype == "LMS Course" else None
+
+
+def _check_release_permissions(container: str, action: str, container_type: str = "LMS Course"):
+	user = frappe.session.user
+	roles = frappe.get_roles(user)
+	is_principal_or_admin = "Principal" in roles or "System Manager" in roles
+
+	if action in ("approve", "reject"):
+		if not is_principal_or_admin:
+			frappe.throw(_("Only a Principal or System Manager can approve or reject content."), frappe.PermissionError)
+		return
+
+	# For publish / submit, user must be authorized teacher or principal/admin
+	if container_type == "LMS Batch":
+		can_manage = can_modify_batch(container) or is_principal_or_admin or bool(has_moderator_role(user))
+	else:
+		can_manage = can_modify_course(container) or is_principal_or_admin or bool(has_moderator_role(user))
+
+	if not can_manage:
+		frappe.throw(_("You do not have permission to manage content for this {0}.").format(container_type), frappe.PermissionError)
+
+	mode = frappe.db.get_value(container_type, container, "content_release_mode") or "None"
+
+	if action == "publish":
+		if mode == "Principal Approval Required" and not is_principal_or_admin:
+			frappe.throw(_("Principal approval is required to publish new content for this {0}.").format(container_type))
+
+
+@frappe.whitelist()
+def publish_content_item(doctype: str, name: str):
+	ctype, cname = _get_container_for_content(doctype, name)
+	if not cname:
+		frappe.throw(_("Container not found for this content."))
+
+	_check_release_permissions(cname, "publish", container_type=ctype)
+
+	publisher = frappe.session.user
+
+	if doctype == "Course Lesson":
+		lesson_doc = frappe.get_doc("Course Lesson", name)
+		if not lesson_doc.title and not lesson_doc.draft_title:
+			frappe.throw(_("Lesson title cannot be empty."))
+		_publish_lesson_record(lesson_doc, publisher)
+		return {"status": "success", "message": _("Lesson published to students successfully.")}
+
+	elif doctype == "Course Chapter":
+		chapter_doc = frappe.get_doc("Course Chapter", name)
+		if not chapter_doc.title:
+			frappe.throw(_("Chapter title cannot be empty."))
+		_publish_chapter_record(chapter_doc, publisher)
+		return {"status": "success", "message": _("Chapter published to students successfully.")}
+
+	elif doctype == "LMS Assessment":
+		frappe.db.set_value(
+			"LMS Assessment",
+			name,
+			{
+				"release_status": "Released",
+				"released_by": publisher,
+				"released_on": frappe.utils.now_datetime(),
+				"rejection_reason": None,
+			},
+		)
+		return {"status": "success", "message": _("Assessment published to students successfully.")}
+
+	elif doctype == "LMS Quiz":
+		frappe.db.set_value(
+			"LMS Quiz",
+			name,
+			{
+				"release_status": "Released",
+				"released_by": publisher,
+				"released_on": frappe.utils.now_datetime(),
+				"rejection_reason": None,
+			},
+		)
+		return {"status": "success", "message": _("Quiz published to students successfully.")}
+
+	frappe.throw(_("Unsupported content type for release: {0}").format(doctype))
+
+
+@frappe.whitelist()
+def submit_content_item(doctype: str, name: str):
+	ctype, cname = _get_container_for_content(doctype, name)
+	if not cname:
+		frappe.throw(_("Container not found for this content."))
+
+	_check_release_permissions(cname, "submit", container_type=ctype)
+
+	container_title = frappe.db.get_value(ctype, cname, "title")
+
+	if doctype == "Course Lesson":
+		lesson_doc = frappe.get_doc("Course Lesson", name)
+		if not lesson_doc.title and not lesson_doc.draft_title:
+			frappe.throw(_("Lesson title cannot be empty."))
+		lesson_doc.release_status = "Pending Principal Approval"
+		lesson_doc.rejection_reason = None
+		lesson_doc.save(ignore_permissions=True)
+		_notify_principals_for_approval("Course Lesson", name, lesson_doc.title, container_title)
+		return {"status": "success", "message": _("Lesson submitted for Principal approval.")}
+
+	elif doctype == "Course Chapter":
+		chapter_doc = frappe.get_doc("Course Chapter", name)
+		if not chapter_doc.title:
+			frappe.throw(_("Chapter title cannot be empty."))
+		chapter_doc.release_status = "Pending Principal Approval"
+		chapter_doc.rejection_reason = None
+		chapter_doc.save(ignore_permissions=True)
+
+		# Also mark child draft lessons as Pending Principal Approval
+		child_lessons = frappe.get_all("Lesson Reference", filters={"parent": name}, pluck="lesson")
+		for l_name in child_lessons:
+			l_doc = frappe.get_doc("Course Lesson", l_name)
+			if l_doc.release_status == "Draft":
+				l_doc.release_status = "Pending Principal Approval"
+				l_doc.rejection_reason = None
+				l_doc.save(ignore_permissions=True)
+
+		_notify_principals_for_approval("Course Chapter", name, chapter_doc.title, container_title)
+		return {"status": "success", "message": _("Chapter submitted for Principal approval.")}
+
+	elif doctype == "LMS Assessment":
+		frappe.db.set_value(
+			"LMS Assessment",
+			name,
+			{"release_status": "Pending Principal Approval", "rejection_reason": None},
+		)
+		ass_doc = frappe.get_doc("LMS Assessment", name)
+		_notify_principals_for_approval("LMS Assessment", name, f"{ass_doc.assessment_type}: {ass_doc.assessment_name}", container_title)
+		return {"status": "success", "message": _("Assessment submitted for Principal approval.")}
+
+	elif doctype == "LMS Quiz":
+		frappe.db.set_value(
+			"LMS Quiz",
+			name,
+			{"release_status": "Pending Principal Approval", "rejection_reason": None},
+		)
+		quiz_title = frappe.db.get_value("LMS Quiz", name, "title")
+		_notify_principals_for_approval("LMS Quiz", name, quiz_title, container_title)
+		return {"status": "success", "message": _("Quiz submitted for Principal approval.")}
+
+	frappe.throw(_("Unsupported content type for submission: {0}").format(doctype))
+
+
+@frappe.whitelist()
+def approve_content_item(doctype: str, name: str):
+	ctype, cname = _get_container_for_content(doctype, name)
+	if not cname:
+		frappe.throw(_("Container not found for this content."))
+
+	_check_release_permissions(cname, "approve", container_type=ctype)
+	approver = frappe.session.user
+
+	if doctype == "Course Lesson":
+		lesson_doc = frappe.get_doc("Course Lesson", name)
+		_publish_lesson_record(lesson_doc, approver)
+		return {"status": "success", "message": _("Lesson approved and published successfully.")}
+
+	elif doctype == "Course Chapter":
+		chapter_doc = frappe.get_doc("Course Chapter", name)
+		_publish_chapter_record(chapter_doc, approver)
+		return {"status": "success", "message": _("Chapter approved and published successfully.")}
+
+	elif doctype == "LMS Assessment":
+		frappe.db.set_value(
+			"LMS Assessment",
+			name,
+			{
+				"release_status": "Released",
+				"released_by": approver,
+				"released_on": frappe.utils.now_datetime(),
+				"rejection_reason": None,
+			},
+		)
+		return {"status": "success", "message": _("Assessment approved and published successfully.")}
+
+	elif doctype == "LMS Quiz":
+		frappe.db.set_value(
+			"LMS Quiz",
+			name,
+			{
+				"release_status": "Released",
+				"released_by": approver,
+				"released_on": frappe.utils.now_datetime(),
+				"rejection_reason": None,
+			},
+		)
+		return {"status": "success", "message": _("Quiz approved and published successfully.")}
+
+	frappe.throw(_("Unsupported content type for approval: {0}").format(doctype))
+
+
+@frappe.whitelist()
+def reject_content_item(doctype: str, name: str, reason: str = ""):
+	ctype, cname = _get_container_for_content(doctype, name)
+	if not cname:
+		frappe.throw(_("Container not found for this content."))
+
+	_check_release_permissions(cname, "reject", container_type=ctype)
+	container_title = frappe.db.get_value(ctype, cname, "title")
+
+	if doctype == "Course Lesson":
+		lesson_doc = frappe.get_doc("Course Lesson", name)
+		lesson_doc.release_status = "Rejected"
+		lesson_doc.rejection_reason = reason
+		lesson_doc.save(ignore_permissions=True)
+		_notify_author_rejected("Course Lesson", name, lesson_doc.title, container_title, lesson_doc.owner, reason)
+		return {"status": "success", "message": _("Lesson rejected.")}
+
+	elif doctype == "Course Chapter":
+		chapter_doc = frappe.get_doc("Course Chapter", name)
+		chapter_doc.release_status = "Rejected"
+		chapter_doc.rejection_reason = reason
+		chapter_doc.save(ignore_permissions=True)
+
+		child_lessons = frappe.get_all("Lesson Reference", filters={"parent": name}, pluck="lesson")
+		for l_name in child_lessons:
+			l_doc = frappe.get_doc("Course Lesson", l_name)
+			if l_doc.release_status == "Pending Principal Approval":
+				l_doc.release_status = "Rejected"
+				l_doc.rejection_reason = reason
+				l_doc.save(ignore_permissions=True)
+
+		_notify_author_rejected("Course Chapter", name, chapter_doc.title, container_title, chapter_doc.owner, reason)
+		return {"status": "success", "message": _("Chapter rejected.")}
+
+	elif doctype == "LMS Assessment":
+		frappe.db.set_value(
+			"LMS Assessment",
+			name,
+			{"release_status": "Rejected", "rejection_reason": reason},
+		)
+		ass_doc = frappe.get_doc("LMS Assessment", name)
+		_notify_author_rejected("LMS Assessment", name, f"{ass_doc.assessment_type}: {ass_doc.assessment_name}", container_title, ass_doc.owner, reason)
+		return {"status": "success", "message": _("Assessment rejected.")}
+
+	elif doctype == "LMS Quiz":
+		doc = frappe.get_doc("LMS Quiz", name)
+		doc.release_status = "Rejected"
+		doc.rejection_reason = reason
+		doc.save(ignore_permissions=True)
+		_notify_author_rejected("LMS Quiz", name, doc.title, container_title, doc.owner, reason)
+		return {"status": "success", "message": _("Quiz rejected.")}
+
+	frappe.throw(_("Unsupported content type for rejection: {0}").format(doctype))
+
+
+@frappe.whitelist()
+def batch_release_content(course: str = None, batch: str = None, action: str = None, item_keys: list = None, reason: str = ""):
+	"""Batch release action ('publish', 'submit', 'approve', 'reject') on content items in a course or batch."""
+	container_type = "LMS Batch" if batch else "LMS Course"
+	container_name = batch or course
+	_check_release_permissions(container_name, action, container_type=container_type)
+
+	if isinstance(item_keys, str):
+		item_keys = frappe.parse_json(item_keys)
+
+	summary = get_unreleased_content_summary(course=course, batch=batch)
+	items_to_process = summary.get("items", [])
+	if item_keys:
+		items_to_process = [it for it in items_to_process if it.get("key") in item_keys or it.get("name") in item_keys]
+
+	processed = []
+	for it in items_to_process:
+		doctype = it.get("doctype")
+		name = it.get("name")
+		if action == "publish":
+			publish_content_item(doctype, name)
+		elif action == "submit":
+			submit_content_item(doctype, name)
+		elif action == "approve":
+			approve_content_item(doctype, name)
+		elif action == "reject":
+			reject_content_item(doctype, name, reason=reason)
+		processed.append({"doctype": doctype, "name": name})
+
+	return {
+		"status": "success",
+		"processed_count": len(processed),
+		"action": action,
+		"items": processed,
+	}
+
+
+@frappe.whitelist()
+def get_unreleased_content_summary(course: str = None, batch: str = None) -> dict:
+	"""Returns unreleased content for an already published course or batch."""
+	if batch and not course:
+		mode = frappe.db.get_value("LMS Batch", batch, "content_release_mode") or "None"
+		batch_published = frappe.db.get_value("LMS Batch", batch, "published")
+		assessments = frappe.get_all(
+			"LMS Assessment",
+			filters={"parent": batch},
+			fields=["name", "assessment_type", "assessment_name", "release_status", "rejection_reason", "released_by", "released_on"],
+			order_by="idx",
+		)
+		items = []
+		draft_count = 0
+		pending_count = 0
+		rejected_count = 0
+		for a in assessments:
+			if a.release_status and a.release_status != "Released":
+				items.append({
+					"key": f"assessment:{a.name}",
+					"doctype": "LMS Assessment",
+					"name": a.name,
+					"title": f"{a.assessment_type}: {a.assessment_name}",
+					"release_status": a.release_status,
+					"rejection_reason": a.rejection_reason,
+					"released_by": a.released_by,
+					"released_on": a.released_on,
+				})
+				if a.release_status == "Draft":
+					draft_count += 1
+				elif a.release_status == "Pending Principal Approval":
+					pending_count += 1
+				elif a.release_status == "Rejected":
+					rejected_count += 1
+
+		return {
+			"batch": batch,
+			"content_release_mode": mode,
+			"batch_published": batch_published,
+			"draft_count": draft_count,
+			"pending_count": pending_count,
+			"rejected_count": rejected_count,
+			"total_unreleased": len(items),
+			"items": items,
+		}
+
+	chapters = get_outline_chapter(course)
+	if not chapters:
+		return {
+			"course": course,
+			"content_release_mode": mode,
+			"course_published": course_published,
+			"draft_count": 0,
+			"pending_count": 0,
+			"rejected_count": 0,
+			"total_unreleased": 0,
+			"items": [],
+		}
+
+	chapter_names = [c.name for c in chapters]
+	lessons = get_outline_lessons(chapter_names)
+
+	items = []
+	draft_count = 0
+	pending_count = 0
+	rejected_count = 0
+
+	for ch in chapters:
+		if ch.release_status and ch.release_status != "Released":
+			items.append({
+				"key": f"chapter:{ch.name}",
+				"doctype": "Course Chapter",
+				"name": ch.name,
+				"title": ch.title,
+				"release_status": ch.release_status,
+				"rejection_reason": ch.rejection_reason,
+				"released_by": ch.released_by,
+				"released_on": ch.released_on,
+			})
+			if ch.release_status == "Draft":
+				draft_count += 1
+			elif ch.release_status == "Pending Principal Approval":
+				pending_count += 1
+			elif ch.release_status == "Rejected":
+				rejected_count += 1
+
+	for lr in lessons:
+		if (lr.release_status and lr.release_status != "Released") or lr.has_unreleased_edits:
+			status = lr.release_status if lr.release_status != "Released" else "Draft"
+			items.append({
+				"key": f"lesson:{lr.name}",
+				"doctype": "Course Lesson",
+				"name": lr.name,
+				"title": lr.title,
+				"chapter": lr.chapter,
+				"release_status": status,
+				"has_unreleased_edits": lr.has_unreleased_edits,
+				"rejection_reason": lr.rejection_reason,
+				"released_by": lr.released_by,
+				"released_on": lr.released_on,
+			})
+			if status == "Draft":
+				draft_count += 1
+			elif status == "Pending Principal Approval":
+				pending_count += 1
+			elif status == "Rejected":
+				rejected_count += 1
+
+	return {
+		"course": course,
+		"content_release_mode": mode,
+		"course_published": course_published,
+		"draft_count": draft_count,
+		"pending_count": pending_count,
+		"rejected_count": rejected_count,
+		"total_unreleased": len(items),
+		"items": items,
+	}
+
+
+def _publish_lesson_record(lesson_doc, publisher: str):
+	content_fields = [
+		"title", "content", "body", "youtube", "quiz_id",
+		"question", "file_type", "instructor_notes", "instructor_content"
+	]
+	if lesson_doc.has_unreleased_edits:
+		for f in content_fields:
+			draft_val = lesson_doc.get(f"draft_{f}")
+			if draft_val is not None:
+				lesson_doc.set(f, draft_val)
+				lesson_doc.set(f"draft_{f}", None)
+		lesson_doc.has_unreleased_edits = 0
+
+	lesson_doc.release_status = "Released"
+	lesson_doc.released_by = publisher
+	lesson_doc.released_on = frappe.utils.now_datetime()
+	lesson_doc.rejection_reason = None
+	lesson_doc.flags.direct_publish = True
+
+	# Auto-release parent chapter if needed
+	if lesson_doc.chapter:
+		chapter_doc = frappe.get_doc("Course Chapter", lesson_doc.chapter)
+		if chapter_doc.release_status != "Released":
+			chapter_doc.release_status = "Released"
+			chapter_doc.released_by = publisher
+			chapter_doc.released_on = frappe.utils.now_datetime()
+			chapter_doc.rejection_reason = None
+			chapter_doc.save(ignore_permissions=True)
+
+	# Auto-release attached quiz if needed
+	if lesson_doc.quiz_id and frappe.db.exists("LMS Quiz", lesson_doc.quiz_id):
+		frappe.db.set_value(
+			"LMS Quiz",
+			lesson_doc.quiz_id,
+			{
+				"release_status": "Released",
+				"released_by": publisher,
+				"released_on": frappe.utils.now_datetime(),
+				"rejection_reason": None,
+			},
+		)
+
+	lesson_doc.save(ignore_permissions=True)
+	lesson_doc.validate_progress_recalculation()
+
+
+def _publish_chapter_record(chapter_doc, publisher: str):
+	chapter_doc.release_status = "Released"
+	chapter_doc.released_by = publisher
+	chapter_doc.released_on = frappe.utils.now_datetime()
+	chapter_doc.rejection_reason = None
+	chapter_doc.save(ignore_permissions=True)
+
+	child_lessons = frappe.get_all(
+		"Lesson Reference",
+		filters={"parent": chapter_doc.name},
+		pluck="lesson",
+		order_by="idx",
+	)
+	for l_name in child_lessons:
+		l_doc = frappe.get_doc("Course Lesson", l_name)
+		if l_doc.release_status in ("Draft", "Pending Principal Approval", "Rejected"):
+			_publish_lesson_record(l_doc, publisher)
+
+
+def _notify_principals_for_approval(doctype: str, docname: str, title: str, course_title: str):
+	from frappe.desk.doctype.notification_log.notification_log import make_notification_logs
+
+	principals = frappe.get_all(
+		"Has Role",
+		filters={"role": "Principal", "parenttype": "User"},
+		pluck="parent",
+	)
+	for p in principals:
+		make_notification_logs(
+			{
+				"type": "Alert",
+				"document_type": doctype,
+				"document_name": docname,
+				"subject": _("New content submitted for Principal approval: {0} in {1}").format(title, course_title),
+				"for_user": p,
+			},
+			p,
+		)
+
+
+def _notify_author_rejected(doctype: str, docname: str, title: str, course_title: str, owner: str, reason: str):
+	from frappe.desk.doctype.notification_log.notification_log import make_notification_logs
+
+	if owner and owner != frappe.session.user:
+		make_notification_logs(
+			{
+				"type": "Alert",
+				"document_type": doctype,
+				"document_name": docname,
+				"subject": _("Content rejected for {0} in {1}: {2}").format(title, course_title, reason or _("Changes requested")),
+				"for_user": owner,
+			},
+			owner,
+		)

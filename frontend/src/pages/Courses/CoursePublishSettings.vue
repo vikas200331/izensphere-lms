@@ -25,6 +25,29 @@
 			</div>
 		</CollapsibleSection>
 
+		<CollapsibleSection :label="__('New Content Release Mode')">
+			<div class="flex flex-col gap-y-4">
+				<FormControl
+					v-model="doc.content_release_mode"
+					type="select"
+					:label="__('Release Mode for Added Content')"
+					:description="
+						__(
+							'Controls how newly added chapters and lessons are released once this course is published.'
+						)
+					"
+					:options="[
+						{ label: __('None (Publish immediately)'), value: 'None' },
+						{ label: __('Teacher Can Publish'), value: 'Teacher Can Publish' },
+						{ label: __('Principal Approval Required'), value: 'Principal Approval Required' },
+						{ label: __('Teacher Choice'), value: 'Teacher Choice' },
+					]"
+					variant="outline"
+					@update:modelValue="markDirty()"
+				/>
+			</div>
+		</CollapsibleSection>
+
 		<CollapsibleSection :label="__('Expiry Settings')">
 			<div class="flex flex-col gap-y-4">
 				<FormControl

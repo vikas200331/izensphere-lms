@@ -14,9 +14,27 @@ class LMSAssignmentSubmission(Document):
 	def validate(self):
 		self.enforce_member_ownership()
 		self.enforce_grading_permission()
+		self.validate_release_status()
 		self.validate_duplicates()
 		self.validate_url()
 		self.validate_status()
+
+	def validate_release_status(self):
+		if PRIVILEGED_ROLES & set(frappe.get_roles()):
+			return
+		if self.lesson:
+			from lms.lms.permissions import can_access_lesson
+			if not can_access_lesson(self.lesson, user=self.member):
+				frappe.throw(_("Cannot submit assignment for an unreleased lesson."), frappe.PermissionError)
+		if getattr(self, "batch", None):
+			assessment = frappe.db.get_value(
+				"LMS Assessment",
+				{"parent": self.batch, "assessment_name": self.assignment, "assessment_type": "LMS Assignment"},
+				["release_status"],
+				as_dict=True,
+			)
+			if assessment and assessment.release_status and assessment.release_status != "Released":
+				frappe.throw(_("Cannot submit unreleased assignment."), frappe.PermissionError)
 
 	def enforce_grading_permission(self):
 		"""Only evaluators/instructors may set the grading fields.

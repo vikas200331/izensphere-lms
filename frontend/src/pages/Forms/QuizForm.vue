@@ -2,6 +2,13 @@
 	<PageHeader :breadcrumbs="breadcrumbs" :loading="quizDetails.loading">
 		<template #actions>
 			<template v-if="!readOnlyMode">
+				<Badge
+					v-if="quizDetails.doc?.release_status"
+					variant="subtle"
+					:theme="releaseBadgeTheme"
+					size="md"
+					:label="releaseStatusLabel"
+				/>
 				<Badge v-if="quizDetails.isDirty" theme="orange">
 					{{ __('Not Saved') }}
 				</Badge>
@@ -60,6 +67,105 @@
 	>
 		<LoadingIndicator class="size-5 text-ink-gray-5" />
 	</div>
+
+	<!-- Content Release Banner for Quiz -->
+	<div
+		v-if="quizDetails.doc?.release_status && quizDetails.doc.release_status !== 'Released'"
+		class="mx-5 mt-4 rounded-xl border p-4 space-y-3 transition-colors"
+		:class="releaseCardClass"
+	>
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<div class="flex items-center gap-2.5 flex-wrap">
+				<span class="text-sm font-semibold text-ink-gray-9">
+					{{ __('Release Status:') }}
+				</span>
+				<Badge
+					variant="subtle"
+					:theme="releaseBadgeTheme"
+					size="md"
+					:label="releaseStatusLabel"
+				/>
+				<span class="text-xs text-ink-gray-6 font-medium">
+					{{ releaseStatusSubtext }}
+				</span>
+			</div>
+
+			<div class="flex items-center gap-2 flex-wrap">
+				<!-- Option A: Teacher Can Publish -->
+				<Button
+					v-if="canTeacherPublishThis"
+					variant="solid"
+					theme="green"
+					size="sm"
+					:loading="actionLoading"
+					@click="confirmTeacherPublish"
+				>
+					<template #prefix>
+						<span class="lucide-send size-3.5" />
+					</template>
+					{{ __('Publish New Content to Students') }}
+				</Button>
+
+				<!-- Option B: Submit for Principal Approval -->
+				<Button
+					v-if="canTeacherSubmitThis"
+					variant="solid"
+					theme="blue"
+					size="sm"
+					:loading="actionLoading"
+					@click="confirmTeacherSubmit"
+				>
+					<template #prefix>
+						<span class="lucide-file-check size-3.5" />
+					</template>
+					{{ __('Submit for Principal Approval') }}
+				</Button>
+
+				<!-- Principal Approve and Publish -->
+				<Button
+					v-if="canPrincipalApproveThis"
+					variant="solid"
+					theme="green"
+					size="sm"
+					:loading="actionLoading"
+					@click="confirmPrincipalApprove"
+				>
+					<template #prefix>
+						<span class="lucide-check-check size-3.5" />
+					</template>
+					{{ __('Approve and Publish') }}
+				</Button>
+
+				<!-- Principal Reject -->
+				<Button
+					v-if="canPrincipalRejectThis"
+					variant="outline"
+					theme="red"
+					size="sm"
+					:loading="actionLoading"
+					@click="openRejectModal"
+				>
+					<template #prefix>
+						<span class="lucide-x size-3.5" />
+					</template>
+					{{ __('Reject') }}
+				</Button>
+			</div>
+		</div>
+
+		<!-- Alert when rejected with reason -->
+		<div
+			v-if="
+				quizDetails.doc.release_status === 'Rejected' &&
+				quizDetails.doc.rejection_reason
+			"
+			class="text-xs text-red-800 bg-red-50 p-3 rounded-lg border border-red-200"
+		>
+			<span class="font-bold">{{ __('Changes requested by Principal:') }}</span>
+			<span class="ml-1">{{ quizDetails.doc.rejection_reason }}</span>
+		</div>
+	</div>
+
 	<div
 		v-else-if="quizDetails.doc"
 		class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[7fr,3fr]"
@@ -301,6 +407,49 @@
 		</div>
 	</div>
 
+	<Dialog
+		v-model="showRejectModal"
+		:options="{
+			title: __('Reject Content & Request Changes'),
+			actions: [
+				{
+					label: __('Cancel'),
+					variant: 'outline',
+					onClick: ({ close }) => close(),
+				},
+				{
+					label: __('Reject Content'),
+					variant: 'solid',
+					theme: 'red',
+					disabled: !rejectionReasonText.trim(),
+					onClick: ({ close }) => {
+						submitQuizRejection()
+						close()
+					},
+				},
+			],
+		}"
+	>
+		<template #body-content>
+			<div class="space-y-4">
+				<p class="text-sm text-ink-gray-7">
+					{{
+						__(
+							'Please state what needs to be revised before this quiz can be released to students.'
+						)
+					}}
+				</p>
+				<FormControl
+					type="textarea"
+					v-model="rejectionReasonText"
+					:label="__('Rejection Reason / Required Changes')"
+					:required="true"
+					placeholder="Explain the changes required..."
+				/>
+			</div>
+		</template>
+	</Dialog>
+
 	<router-view :key="route.params.questionName" />
 </template>
 <script setup>
@@ -315,6 +464,8 @@ import {
 	Badge,
 	LoadingIndicator,
 	Tooltip,
+	Dialog,
+	call,
 } from 'frappe-ui'
 import BooleanSwitch from '@/components/Controls/BooleanSwitch.vue'
 import PageHeader from '@/components/Layouts/PageHeader.vue'
@@ -352,6 +503,228 @@ const router = useRouter()
 const { isMobile } = useScreenSize()
 const readOnlyMode = window.read_only_mode
 const { $dialog } = getCurrentInstance().appContext.config.globalProperties
+
+const isModerator = computed(() => Boolean(user.data?.is_moderator))
+const isInstructor = computed(
+	() => Boolean(user.data?.is_instructor || user.data?.is_moderator)
+)
+
+const currentReleaseStatus = computed(
+	() => quizDetails.doc?.release_status || 'Released'
+)
+
+const releaseBadgeTheme = computed(() => {
+	switch (currentReleaseStatus.value) {
+		case 'Released':
+			return 'green'
+		case 'Draft':
+			return 'orange'
+		case 'Pending Principal Approval':
+			return 'blue'
+		case 'Rejected':
+			return 'red'
+		default:
+			return 'gray'
+	}
+})
+
+const releaseStatusLabel = computed(() => {
+	switch (currentReleaseStatus.value) {
+		case 'Released':
+			return __('Released')
+		case 'Draft':
+			return __('Draft (Hidden)')
+		case 'Pending Principal Approval':
+			return __('Pending Principal Approval')
+		case 'Rejected':
+			return __('Changes Requested')
+		default:
+			return currentReleaseStatus.value
+	}
+})
+
+const releaseStatusSubtext = computed(() => {
+	switch (currentReleaseStatus.value) {
+		case 'Released':
+			return __('This quiz is live and accessible to enrolled students.')
+		case 'Draft':
+			return __('This quiz is hidden from students.')
+		case 'Pending Principal Approval':
+			return __('Waiting for Principal review and approval.')
+		case 'Rejected':
+			return __('Returned to teacher for changes.')
+		default:
+			return ''
+	}
+})
+
+const releaseCardClass = computed(() => {
+	switch (currentReleaseStatus.value) {
+		case 'Draft':
+			return 'bg-amber-50/60 border-amber-200'
+		case 'Pending Principal Approval':
+			return 'bg-blue-50/60 border-blue-200'
+		case 'Rejected':
+			return 'bg-red-50/60 border-red-200'
+		default:
+			return 'bg-surface-gray-1 border-outline-gray-2'
+	}
+})
+
+const canTeacherPublishThis = computed(() => {
+	if (!isInstructor.value) return false
+	return (
+		currentReleaseStatus.value === 'Draft' ||
+		currentReleaseStatus.value === 'Rejected'
+	)
+})
+
+const canTeacherSubmitThis = computed(() => {
+	if (!isInstructor.value) return false
+	return (
+		currentReleaseStatus.value === 'Draft' ||
+		currentReleaseStatus.value === 'Rejected'
+	)
+})
+
+const canPrincipalApproveThis = computed(() => {
+	if (!isModerator.value) return false
+	return (
+		currentReleaseStatus.value === 'Pending Principal Approval' ||
+		currentReleaseStatus.value === 'Draft'
+	)
+})
+
+const canPrincipalRejectThis = computed(() => {
+	if (!isModerator.value) return false
+	return currentReleaseStatus.value === 'Pending Principal Approval'
+})
+
+const actionLoading = ref(false)
+const showRejectModal = ref(false)
+const rejectionReasonText = ref('')
+
+function confirmTeacherPublish() {
+	$dialog({
+		title: __('Publish New Content to Students'),
+		message: __(
+			'Are you sure you want to release this quiz? It will become immediately visible to eligible students.'
+		),
+		actions: [
+			{
+				label: __('Cancel'),
+				variant: 'outline',
+				onClick: (close) => close(),
+			},
+			{
+				label: __('Publish Now'),
+				variant: 'solid',
+				theme: 'green',
+				onClick: (close) => {
+					executeContentAction('publish')
+					close()
+				},
+			},
+		],
+	})
+}
+
+function confirmTeacherSubmit() {
+	$dialog({
+		title: __('Submit for Principal Approval'),
+		message: __(
+			'Submit this quiz to the Principal for review? It will remain hidden from students until approved.'
+		),
+		actions: [
+			{
+				label: __('Cancel'),
+				variant: 'outline',
+				onClick: (close) => close(),
+			},
+			{
+				label: __('Submit for Approval'),
+				variant: 'solid',
+				theme: 'blue',
+				onClick: (close) => {
+					executeContentAction('submit')
+					close()
+				},
+			},
+		],
+	})
+}
+
+function confirmPrincipalApprove() {
+	$dialog({
+		title: __('Approve and Publish'),
+		message: __(
+			'Approve and publish this quiz? It will become immediately visible to students.'
+		),
+		actions: [
+			{
+				label: __('Cancel'),
+				variant: 'outline',
+				onClick: (close) => close(),
+			},
+			{
+				label: __('Approve & Publish'),
+				variant: 'solid',
+				theme: 'green',
+				onClick: (close) => {
+					executeContentAction('approve')
+					close()
+				},
+			},
+		],
+	})
+}
+
+function openRejectModal() {
+	rejectionReasonText.value = ''
+	showRejectModal.value = true
+}
+
+function submitQuizRejection() {
+	executeContentAction('reject', rejectionReasonText.value)
+}
+
+function executeContentAction(action, reason) {
+	if (!props.quizID) return
+	actionLoading.value = true
+
+	let endpoint = 'lms.lms.api.publish_content_item'
+	let params = {
+		doctype: 'LMS Quiz',
+		name: props.quizID,
+	}
+
+	if (action === 'submit') {
+		endpoint = 'lms.lms.api.submit_content_item'
+	} else if (action === 'approve') {
+		endpoint = 'lms.lms.api.approve_content_item'
+	} else if (action === 'reject') {
+		endpoint = 'lms.lms.api.reject_content_item'
+		params.reason = reason || ''
+	}
+
+	call(endpoint, params)
+		.then(() => {
+			if (action === 'publish' || action === 'approve') {
+				toast.success(__('Quiz published to students successfully'))
+			} else if (action === 'submit') {
+				toast.success(__('Quiz submitted for Principal approval'))
+			} else if (action === 'reject') {
+				toast.success(__('Quiz rejected and returned to teacher'))
+			}
+			quizDetails.reload()
+		})
+		.catch((err) => {
+			toast.error(err.messages?.[0] || err.message || err)
+		})
+		.finally(() => {
+			actionLoading.value = false
+		})
+}
 
 const deleteQuiz = () => {
 	$dialog({

@@ -55,6 +55,8 @@ export interface LMSCourse {
 	featured?: 0 | 1
 	/**	Category : Link - LMS Category	*/
 	category?: string
+	/**	Content Release Mode : Select	*/
+	content_release_mode?: 'None' | 'Teacher Can Publish' | 'Principal Approval Required' | 'Teacher Choice'
 	/**	Enrollments : Int	*/
 	enrollments?: number
 	/**	Lessons : Int	*/

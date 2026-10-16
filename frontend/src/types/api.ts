@@ -84,6 +84,11 @@ export interface OutlineLesson {
 	number: string
 	icon?: string
 	is_complete?: boolean
+	release_status?: 'Released' | 'Draft' | 'Pending Principal Approval' | 'Rejected'
+	has_unreleased_edits?: 0 | 1
+	rejection_reason?: string
+	released_by?: string
+	released_on?: string
 }
 
 export interface OutlineChapter {
@@ -93,6 +98,10 @@ export interface OutlineChapter {
 	is_scorm_package?: 0 | 1
 	scorm_package?: { file_name: string; file_size: number } | null
 	lessons?: OutlineLesson[]
+	release_status?: 'Released' | 'Draft' | 'Pending Principal Approval' | 'Rejected'
+	rejection_reason?: string
+	released_by?: string
+	released_on?: string
 }
 
 export interface CertificationInfo {

@@ -10,9 +10,15 @@ from frappe.utils import cint
 
 class LMSQuizSubmission(Document):
 	def validate(self):
+		self.validate_quiz_access()
 		self.validate_if_max_attempts_exceeded()
 		self.validate_marks()
 		self.set_percentage()
+
+	def validate_quiz_access(self):
+		from lms.lms.permissions import can_access_quiz
+		if not can_access_quiz(self.quiz, user=self.member):
+			frappe.throw(_("Cannot submit unreleased or inaccessible quiz."), frappe.PermissionError)
 
 	def on_update(self):
 		self.notify_member()

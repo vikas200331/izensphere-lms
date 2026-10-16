@@ -57,6 +57,116 @@
 				</div>
 			</BottomSheet>
 
+			<!-- Content Release Toolbar & Notifications -->
+			<div
+				v-if="contentReleaseMode !== 'None' && lessonDetails.data?.lesson"
+				class="rounded-xl border p-4 space-y-3 transition-colors"
+				:class="releaseCardClass"
+			>
+				<div class="flex flex-wrap items-center justify-between gap-3">
+					<div class="flex items-center gap-2.5 flex-wrap">
+						<span class="text-sm font-semibold text-ink-gray-9">
+							{{ __('Release Status:') }}
+						</span>
+						<Badge
+							variant="subtle"
+							:theme="releaseBadgeTheme"
+							size="md"
+							:label="releaseStatusLabel"
+						/>
+						<span class="text-xs text-ink-gray-6 font-medium">
+							{{ releaseStatusSubtext }}
+						</span>
+					</div>
+
+					<div class="flex items-center gap-2 flex-wrap">
+						<!-- Option A: Teacher Can Publish -->
+						<Button
+							v-if="canTeacherPublishThis"
+							variant="solid"
+							theme="green"
+							size="sm"
+							:loading="actionLoading"
+							@click="confirmTeacherPublish"
+						>
+							<template #prefix>
+								<span class="lucide-send size-3.5" />
+							</template>
+							{{ __('Publish New Content to Students') }}
+						</Button>
+
+						<!-- Option B: Submit for Principal Approval -->
+						<Button
+							v-if="canTeacherSubmitThis"
+							variant="solid"
+							theme="blue"
+							size="sm"
+							:loading="actionLoading"
+							@click="confirmTeacherSubmit"
+						>
+							<template #prefix>
+								<span class="lucide-file-check size-3.5" />
+							</template>
+							{{ __('Submit for Principal Approval') }}
+						</Button>
+
+						<!-- Principal Approve and Publish -->
+						<Button
+							v-if="canPrincipalApproveThis"
+							variant="solid"
+							theme="green"
+							size="sm"
+							:loading="actionLoading"
+							@click="confirmPrincipalApprove"
+						>
+							<template #prefix>
+								<span class="lucide-check-check size-3.5" />
+							</template>
+							{{ __('Approve and Publish') }}
+						</Button>
+
+						<!-- Principal Reject -->
+						<Button
+							v-if="canPrincipalRejectThis"
+							variant="outline"
+							theme="red"
+							size="sm"
+							:loading="actionLoading"
+							@click="openRejectModal"
+						>
+							<template #prefix>
+								<span class="lucide-x size-3.5" />
+							</template>
+							{{ __('Reject') }}
+						</Button>
+					</div>
+				</div>
+
+				<!-- Alert when rejected with reason -->
+				<div
+					v-if="
+						lessonDetails.data.lesson.release_status === 'Rejected' &&
+						lessonDetails.data.lesson.rejection_reason
+					"
+					class="text-xs text-red-800 bg-red-50 p-3 rounded-lg border border-red-200"
+				>
+					<span class="font-bold">{{ __('Changes requested by Principal:') }}</span>
+					<span class="ml-1">{{ lessonDetails.data.lesson.rejection_reason }}</span>
+				</div>
+
+				<!-- Alert when has unreleased edits -->
+				<div
+					v-if="lessonDetails.data.lesson.has_unreleased_edits"
+					class="text-xs text-amber-900 bg-amber-50 p-3 rounded-lg border border-amber-200"
+				>
+					{{
+						__(
+							'You have unreleased edits to this lesson. Enrolled students continue to see the previously published version until changes are published.'
+						)
+					}}
+				</div>
+			</div>
+
 			<textarea
 				ref="titleRef"
 				v-model="lesson.title"
@@ -103,6 +213,43 @@
 				@change="markDirty"
 			/>
 		</div>
+
+		<Dialog
+			v-model:open="showRejectModal"
+			:title="__('Reject Lesson Content')"
+			:actions="[
+				{
+					label: __('Cancel'),
+					variant: 'outline',
+					onClick: ({ close }) => close(),
+				},
+				{
+					label: __('Confirm Rejection'),
+					variant: 'solid',
+					theme: 'red',
+					onClick: ({ close }) => {
+						submitLessonRejection()
+						close()
+					},
+				},
+			]"
+		>
+			<div class="space-y-3">
+				<p class="text-sm text-ink-gray-7">
+					{{
+						__(
+							'Provide feedback or explain the required changes. The author will be notified to revise the content.'
+						)
+					}}
+				</p>
+				<textarea
+					v-model="rejectionReasonText"
+					class="w-full rounded-md border border-outline-gray-2 p-2.5 text-sm focus:border-outline-gray-4 focus:outline-none"
+					rows="3"
+					:placeholder="__('Enter reason for rejection...')"
+				/>
+			</div>
+		</Dialog>
 	</div>
 </template>
 <script setup>
@@ -112,12 +259,15 @@
 import {
 	Badge,
 	Button,
+	Dialog,
 	Switch,
 	call,
 	createResource,
 	toast,
 	Tooltip,
 } from 'frappe-ui'
+import { createDialog } from '@/utils/dialogs'
+const $dialog = createDialog
 import {
 	reactive,
 	computed,
@@ -237,6 +387,242 @@ function markDirty({ fromTitle = false } = {}) {
 	autoSave()
 }
 
+const isPrincipalUser = computed(() => {
+	const roles = user.data?.roles || []
+	return (
+		Boolean(user.data?.is_principal) ||
+		roles.includes('Principal') ||
+		roles.includes('System Manager') ||
+		Boolean(user.data?.is_system_manager)
+	)
+})
+
+const contentReleaseMode = computed(() => {
+	return lessonDetails.data?.content_release_mode || 'None'
+})
+
+const currentReleaseStatus = computed(() => {
+	return lessonDetails.data?.lesson?.release_status || 'Draft'
+})
+
+const hasUnreleasedEdits = computed(() => {
+	return Boolean(lessonDetails.data?.lesson?.has_unreleased_edits)
+})
+
+const releaseStatusLabel = computed(() => {
+	if (hasUnreleasedEdits.value && currentReleaseStatus.value === 'Released') {
+		return __('Unreleased Edits')
+	}
+	if (currentReleaseStatus.value === 'Pending Principal Approval') {
+		return __('Pending Principal Approval')
+	}
+	if (currentReleaseStatus.value === 'Rejected') {
+		return __('Rejected')
+	}
+	if (currentReleaseStatus.value === 'Released') {
+		return __('Released')
+	}
+	return __('Draft (Unreleased)')
+})
+
+const releaseBadgeTheme = computed(() => {
+	if (hasUnreleasedEdits.value && currentReleaseStatus.value === 'Released') return 'amber'
+	if (currentReleaseStatus.value === 'Pending Principal Approval') return 'blue'
+	if (currentReleaseStatus.value === 'Rejected') return 'red'
+	if (currentReleaseStatus.value === 'Released') return 'green'
+	return 'gray'
+})
+
+const releaseCardClass = computed(() => {
+	if (hasUnreleasedEdits.value && currentReleaseStatus.value === 'Released')
+		return 'border-amber-200 bg-amber-50/30'
+	if (currentReleaseStatus.value === 'Pending Principal Approval')
+		return 'border-blue-200 bg-blue-50/30'
+	if (currentReleaseStatus.value === 'Rejected')
+		return 'border-red-200 bg-red-50/30'
+	if (currentReleaseStatus.value === 'Released')
+		return 'border-outline-gray-2 bg-surface-gray-1'
+	return 'border-outline-gray-2 bg-surface-gray-1'
+})
+
+const releaseStatusSubtext = computed(() => {
+	if (hasUnreleasedEdits.value && currentReleaseStatus.value === 'Released') {
+		return __('Edits are hidden from students')
+	}
+	if (currentReleaseStatus.value === 'Pending Principal Approval') {
+		return __('Waiting for Principal review')
+	}
+	if (currentReleaseStatus.value === 'Rejected') {
+		return __('Revisions needed')
+	}
+	if (currentReleaseStatus.value === 'Released') {
+		return __('Visible to enrolled students')
+	}
+	return __('Hidden from students')
+})
+
+const canTeacherPublishThis = computed(() => {
+	if (contentReleaseMode.value === 'None') return false
+	if (contentReleaseMode.value !== 'Teacher Can Publish' && contentReleaseMode.value !== 'Teacher Choice' && !isPrincipalUser.value) return false
+	const st = currentReleaseStatus.value
+	const edits = hasUnreleasedEdits.value
+	return st === 'Draft' || st === 'Rejected' || edits
+})
+
+const canTeacherSubmitThis = computed(() => {
+	if (contentReleaseMode.value === 'None') return false
+	if (contentReleaseMode.value !== 'Principal Approval Required' && contentReleaseMode.value !== 'Teacher Choice') return false
+	const st = currentReleaseStatus.value
+	const edits = hasUnreleasedEdits.value
+	return st === 'Draft' || st === 'Rejected' || edits
+})
+
+const canPrincipalApproveThis = computed(() => {
+	if (!isPrincipalUser.value) return false
+	if (contentReleaseMode.value === 'None') return false
+	const st = currentReleaseStatus.value
+	const edits = hasUnreleasedEdits.value
+	return st === 'Pending Principal Approval' || st === 'Draft' || st === 'Rejected' || edits
+})
+
+const canPrincipalRejectThis = computed(() => {
+	if (!isPrincipalUser.value) return false
+	if (contentReleaseMode.value === 'None') return false
+	return currentReleaseStatus.value === 'Pending Principal Approval'
+})
+
+const actionLoading = ref(false)
+const showRejectModal = ref(false)
+const rejectionReasonText = ref('')
+
+function confirmTeacherPublish() {
+	$dialog({
+		title: __('Publish New Content to Students'),
+		message: __(
+			'Are you sure you want to release this lesson? It will become immediately visible to eligible enrolled students.'
+		),
+		actions: [
+			{
+				label: __('Cancel'),
+				variant: 'outline',
+				onClick: (close) => close(),
+			},
+			{
+				label: __('Publish Now'),
+				variant: 'solid',
+				theme: 'green',
+				onClick: (close) => {
+					executeContentAction('publish')
+					close()
+				},
+			},
+		],
+	})
+}
+
+function confirmTeacherSubmit() {
+	$dialog({
+		title: __('Submit for Principal Approval'),
+		message: __(
+			'Submit this lesson to the Principal for review? It will remain hidden from students until approved.'
+		),
+		actions: [
+			{
+				label: __('Cancel'),
+				variant: 'outline',
+				onClick: (close) => close(),
+			},
+			{
+				label: __('Submit for Approval'),
+				variant: 'solid',
+				theme: 'blue',
+				onClick: (close) => {
+					executeContentAction('submit')
+					close()
+				},
+			},
+		],
+	})
+}
+
+function confirmPrincipalApprove() {
+	$dialog({
+		title: __('Approve and Publish'),
+		message: __(
+			'Approve and publish this lesson? It will become immediately visible to students.'
+		),
+		actions: [
+			{
+				label: __('Cancel'),
+				variant: 'outline',
+				onClick: (close) => close(),
+			},
+			{
+				label: __('Approve & Publish'),
+				variant: 'solid',
+				theme: 'green',
+				onClick: (close) => {
+					executeContentAction('approve')
+					close()
+				},
+			},
+		],
+	})
+}
+
+function openRejectModal() {
+	rejectionReasonText.value = ''
+	showRejectModal.value = true
+}
+
+function submitLessonRejection() {
+	executeContentAction('reject', rejectionReasonText.value)
+}
+
+function executeContentAction(action, reason) {
+	if (!lessonDetails.data?.lesson?.name) return
+	actionLoading.value = true
+
+	let endpoint = 'lms.lms.api.publish_content_item'
+	let params = {
+		doctype: 'Course Lesson',
+		name: lessonDetails.data.lesson.name,
+	}
+
+	if (action === 'submit') {
+		endpoint = 'lms.lms.api.submit_content_item'
+	} else if (action === 'approve') {
+		endpoint = 'lms.lms.api.approve_content_item'
+	} else if (action === 'reject') {
+		endpoint = 'lms.lms.api.reject_content_item'
+		params.reason = reason || ''
+	}
+
+	call(endpoint, params)
+		.then(() => {
+			if (action === 'publish' || action === 'approve') {
+				toast.success(__('Content published to students successfully'))
+			} else if (action === 'submit') {
+				toast.success(__('Content submitted for Principal approval'))
+			} else if (action === 'reject') {
+				toast.success(__('Content rejected and sent back to author'))
+			}
+			lessonDetails.reload()
+			emit('saved', {
+				name: lessonDetails.data.lesson.name,
+				title: lesson.title,
+				include_in_preview: lesson.include_in_preview,
+				isNew: false,
+			})
+		})
+		.catch((err) => {
+			toast.error(err.messages?.[0] || err.message || err)
+		})
+		.finally(() => {
+			actionLoading.value = false
+		})
+}
+
 defineExpose({
 	saveLesson,
 	markDeleted,
@@ -247,7 +633,14 @@ defineExpose({
 })
 
 onMounted(() => {
-	if (!user.data?.is_moderator && !user.data?.is_instructor) {
+	const roles = user.data?.roles || []
+	if (
+		!user.data?.is_moderator &&
+		!user.data?.is_instructor &&
+		!user.data?.is_principal &&
+		!user.data?.is_system_manager &&
+		!roles.includes('Principal')
+	) {
 		window.location.href = '/login'
 	}
 	capture('lesson_form_opened')

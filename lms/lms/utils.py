@@ -596,10 +596,25 @@ def notify_mentions_via_email(doc: Document, topic: dict):
 
 
 def get_lesson_count(course: str) -> int:
-	chapter_references = frappe.get_all("Chapter Reference", {"parent": course}, pluck="chapter")
-	if not chapter_references:
-		return 0
-	return frappe.db.count("Lesson Reference", {"parent": ("in", chapter_references)})
+	ChapterReference = frappe.qb.DocType("Chapter Reference")
+	CourseChapter = frappe.qb.DocType("Course Chapter")
+	LessonReference = frappe.qb.DocType("Lesson Reference")
+	CourseLesson = frappe.qb.DocType("Course Lesson")
+
+	res = (
+		frappe.qb.from_(ChapterReference)
+		.join(CourseChapter)
+		.on(CourseChapter.name == ChapterReference.chapter)
+		.join(LessonReference)
+		.on(LessonReference.parent == CourseChapter.name)
+		.join(CourseLesson)
+		.on(CourseLesson.name == LessonReference.lesson)
+		.where(ChapterReference.parent == course)
+		.where((CourseChapter.release_status == "Released") | (CourseChapter.release_status.isnull()))
+		.where((CourseLesson.release_status == "Released") | (CourseLesson.release_status.isnull()))
+		.select(frappe.query_builder.functions.Count(CourseLesson.name))
+	).run()
+	return res[0][0] if res and res[0] else 0
 
 
 @frappe.whitelist(allow_guest=True)
@@ -1229,7 +1244,33 @@ def get_course_outline(course: str, progress: bool = False) -> list:
 	if not chapters:
 		return []
 
+	user = frappe.session.user
+	roles = frappe.get_roles(user) if user != "Guest" else []
+	can_manage = (
+		user != "Guest"
+		and (
+			can_modify_course(course)
+			or "Principal" in roles
+			or "System Manager" in roles
+			or bool(has_moderator_role(user))
+		)
+	)
+
 	lesson_rows = get_outline_lessons([c.name for c in chapters])
+
+	# For students and guests, hide unreleased chapters and lessons
+	if not can_manage:
+		chapters = [c for c in chapters if (not c.release_status or c.release_status == "Released")]
+		if not chapters:
+			return []
+		released_chapter_names = {c.name for c in chapters}
+		lesson_rows = [
+			lr
+			for lr in lesson_rows
+			if lr.chapter_name in released_chapter_names
+			and (not lr.release_status or lr.release_status == "Released")
+		]
+
 	files_by_name = get_scorm_files(chapters)
 	completed = get_completed_lessons(course, lesson_rows) if progress else set()
 
@@ -1250,6 +1291,10 @@ def get_outline_chapter(course: str) -> list:
 			CourseChapter.is_scorm_package.as_("is_scorm_package"),
 			CourseChapter.launch_file.as_("launch_file"),
 			CourseChapter.scorm_package.as_("scorm_package"),
+			CourseChapter.release_status.as_("release_status"),
+			CourseChapter.rejection_reason.as_("rejection_reason"),
+			CourseChapter.released_by.as_("released_by"),
+			CourseChapter.released_on.as_("released_on"),
 		)
 		.where(ChapterReference.parent == course)
 		.orderby(ChapterReference.idx)
@@ -1277,6 +1322,11 @@ def get_outline_lessons(chapter_names: list) -> list:
 			CourseLesson.file_type.as_("file_type"),
 			CourseLesson.course.as_("course"),
 			CourseLesson.chapter.as_("chapter"),
+			CourseLesson.release_status.as_("release_status"),
+			CourseLesson.rejection_reason.as_("rejection_reason"),
+			CourseLesson.released_by.as_("released_by"),
+			CourseLesson.released_on.as_("released_on"),
+			CourseLesson.has_unreleased_edits.as_("has_unreleased_edits"),
 		)
 		.where(LessonReference.parent.isin(chapter_names))
 		.orderby(LessonReference.idx)
@@ -1329,7 +1379,12 @@ def build_outline(
 			file_type=lr.file_type,
 			course=lr.course,
 			chapter=lr.chapter,
-			number=f"{chapter_idx_by_name[lr.chapter_name]}-{lr.lesson_idx}",
+			release_status=lr.release_status or "Released",
+			has_unreleased_edits=lr.has_unreleased_edits or 0,
+			rejection_reason=lr.rejection_reason,
+			released_by=lr.released_by,
+			released_on=lr.released_on,
+			number=f"{chapter_idx_by_name.get(lr.chapter_name, 1)}-{lr.lesson_idx}",
 		)
 		if progress:
 			lesson.is_complete = lr.name in completed
@@ -1343,6 +1398,10 @@ def build_outline(
 			is_scorm_package=c.is_scorm_package,
 			launch_file=c.launch_file,
 			scorm_package=c.scorm_package,
+			release_status=c.release_status or "Released",
+			rejection_reason=c.rejection_reason,
+			released_by=c.released_by,
+			released_on=c.released_on,
 			idx=c.idx,
 			lessons=lessons_by_chapter.get(c.name, []),
 		)
@@ -1707,15 +1766,32 @@ def get_batch_courses(batch: str) -> list:
 def get_assessments(batch: str) -> list:
 	member = frappe.session.user
 	is_enrolled = frappe.db.exists("LMS Batch Enrollment", {"batch": batch, "member": member})
-	if not is_enrolled and not can_modify_batch(batch):
+	roles = frappe.get_roles(member) if member != "Guest" else []
+	can_manage = (
+		member != "Guest"
+		and (
+			can_modify_batch(batch)
+			or "Principal" in roles
+			or "System Manager" in roles
+			or bool(has_moderator_role(member))
+		)
+	)
+
+	if not is_enrolled and not can_manage:
 		frappe.throw(_("You are not authorized to view the assessments of this batch."))
 
 	assessments = frappe.get_all(
 		"LMS Assessment",
 		{"parent": batch},
-		["name", "assessment_type", "assessment_name"],
+		["name", "assessment_type", "assessment_name", "release_status", "released_by", "released_on", "rejection_reason"],
 		order_by="idx",
 	)
+
+	if not can_manage:
+		assessments = [
+			a for a in assessments
+			if not a.release_status or a.release_status == "Released"
+		]
 
 	for assessment in assessments:
 		if assessment.assessment_type == "LMS Assignment":
@@ -2287,10 +2363,14 @@ def calculate_discount_amount(base_amount: float, coupon: dict) -> float:
 
 @frappe.whitelist()
 def get_lesson_creation_details(course: str, chapter: int, lesson: int) -> dict:
-	frappe.only_for(["Moderator", "Course Creator"])
+	roles = frappe.get_roles()
+	if not ("Moderator" in roles or "Course Creator" in roles or "Principal" in roles or "System Manager" in roles):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
 	chapter_name = frappe.db.get_value("Chapter Reference", {"parent": course, "idx": chapter}, "chapter")
 	lesson_name = frappe.db.get_value("Lesson Reference", {"parent": chapter_name, "idx": lesson}, "lesson")
 
+	lesson_details = None
 	if lesson_name:
 		lesson_details = frappe.db.get_value(
 			"Course Lesson",
@@ -2305,13 +2385,47 @@ def get_lesson_creation_details(course: str, chapter: int, lesson: int) -> dict:
 				"instructor_content",
 				"youtube",
 				"quiz_id",
+				"question",
+				"file_type",
+				"release_status",
+				"has_unreleased_edits",
+				"draft_title",
+				"draft_content",
+				"draft_body",
+				"draft_youtube",
+				"draft_quiz_id",
+				"draft_question",
+				"draft_file_type",
+				"draft_instructor_notes",
+				"draft_instructor_content",
+				"rejection_reason",
 			],
 			as_dict=1,
 		)
+		if lesson_details and lesson_details.has_unreleased_edits:
+			if lesson_details.draft_title:
+				lesson_details.title = lesson_details.draft_title
+			if lesson_details.draft_content is not None:
+				lesson_details.content = lesson_details.draft_content
+			if lesson_details.draft_body is not None:
+				lesson_details.body = lesson_details.draft_body
+			if lesson_details.draft_youtube:
+				lesson_details.youtube = lesson_details.draft_youtube
+			if lesson_details.draft_quiz_id:
+				lesson_details.quiz_id = lesson_details.draft_quiz_id
+			if lesson_details.draft_question:
+				lesson_details.question = lesson_details.draft_question
+			if lesson_details.draft_file_type:
+				lesson_details.file_type = lesson_details.draft_file_type
+			if lesson_details.draft_instructor_notes is not None:
+				lesson_details.instructor_notes = lesson_details.draft_instructor_notes
+			if lesson_details.draft_instructor_content is not None:
+				lesson_details.instructor_content = lesson_details.draft_instructor_content
 
 	return {
 		"course_title": frappe.db.get_value("LMS Course", course, "title"),
-		"chapter": frappe.db.get_value("Course Chapter", chapter_name, ["title", "name"], as_dict=True),
+		"content_release_mode": frappe.db.get_value("LMS Course", course, "content_release_mode") or "None",
+		"chapter": frappe.db.get_value("Course Chapter", chapter_name, ["title", "name", "release_status", "rejection_reason"], as_dict=True),
 		"lesson": lesson_details if lesson_name else None,
 	}
 

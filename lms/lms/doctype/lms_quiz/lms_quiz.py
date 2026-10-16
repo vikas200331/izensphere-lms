@@ -35,6 +35,38 @@ ALLOWED_DATAURL_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".
 
 
 class LMSQuiz(Document):
+	def before_insert(self):
+		self.set_initial_release_status()
+
+	def set_initial_release_status(self):
+		if getattr(self.flags, "direct_publish", False):
+			self.release_status = "Released"
+			return
+
+		course = self.course
+		if not course and getattr(self, "lesson", None):
+			course = frappe.db.get_value("Course Lesson", self.lesson, "course")
+			self.course = course
+
+		if not course:
+			return
+
+		course_doc = frappe.db.get_value(
+			"LMS Course",
+			course,
+			["published", "content_release_mode"],
+			as_dict=True,
+		)
+		if (
+			course_doc
+			and course_doc.published
+			and course_doc.content_release_mode
+			and course_doc.content_release_mode not in ("None", "")
+		):
+			self.release_status = "Draft"
+		elif not self.release_status:
+			self.release_status = "Released"
+
 	def validate(self):
 		self.validate_duplicate_questions()
 		self.validate_limit()

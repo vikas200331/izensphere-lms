@@ -36,7 +36,11 @@
   "section_break_3",
   "lesson",
   "column_break_5",
-  "course"
+  "course",
+  "release_status",
+  "released_by",
+  "released_on",
+  "rejection_reason"
  ],
  "fields": [
   {
@@ -215,6 +219,30 @@
    "fieldname": "late_submission_grace_period",
    "fieldtype": "Int",
    "label": "Late Submission Grace Period (in minutes)"
+  },
+  {
+   "default": "Released",
+   "fieldname": "release_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Release Status",
+   "options": "Released\nDraft\nPending Principal Approval\nRejected"
+  },
+  {
+   "fieldname": "released_by",
+   "fieldtype": "Link",
+   "label": "Released By",
+   "options": "User"
+  },
+  {
+   "fieldname": "released_on",
+   "fieldtype": "Datetime",
+   "label": "Released On"
+  },
+  {
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection Reason"
   }
  ],
  "grid_page_length": 50,

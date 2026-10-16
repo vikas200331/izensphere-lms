@@ -91,4 +91,6 @@ export interface LMSBatch {
 	notification_sent?: 0 | 1
 	/**	Evaluation : Check	*/
 	evaluation?: 0 | 1
+	/**	New Content Release Mode : Select	*/
+	content_release_mode?: 'None' | 'Teacher Can Publish' | 'Principal Approval Required' | 'Teacher Choice'
 }

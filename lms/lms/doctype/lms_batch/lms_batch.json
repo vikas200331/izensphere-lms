@@ -10,6 +10,7 @@
     "field_order": [
         "section_break_earo",
         "published",
+        "content_release_mode",
         "title",
         "start_date",
         "end_date",
@@ -234,6 +235,14 @@
             "fieldtype": "Check",
             "in_standard_filter": 1,
             "label": "Published"
+        },
+        {
+            "default": "None",
+            "description": "Release workflow for newly added content in an already published batch",
+            "fieldname": "content_release_mode",
+            "fieldtype": "Select",
+            "label": "Content Release Mode",
+            "options": "None\nTeacher Can Publish\nPrincipal Approval Required\nTeacher Choice"
         },
         {
             "fieldname": "timetable",

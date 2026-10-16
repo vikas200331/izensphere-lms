@@ -33,6 +33,37 @@ from ...md import find_macros
 
 
 class CourseLesson(Document):
+	def before_insert(self):
+		self.set_initial_release_status()
+
+	def set_initial_release_status(self):
+		if getattr(self.flags, "direct_publish", False):
+			self.release_status = "Released"
+			return
+
+		course = self.course
+		if not course and self.chapter:
+			course = frappe.db.get_value("Course Chapter", self.chapter, "course")
+			self.course = course
+		if not course:
+			return
+
+		course_doc = frappe.db.get_value(
+			"LMS Course",
+			course,
+			["published", "content_release_mode"],
+			as_dict=True,
+		)
+		if (
+			course_doc
+			and course_doc.published
+			and course_doc.content_release_mode
+			and course_doc.content_release_mode not in ("None", "")
+		):
+			self.release_status = "Draft"
+		elif not self.release_status:
+			self.release_status = "Released"
+
 	def after_insert(self):
 		self.validate_progress_recalculation()
 
@@ -43,14 +74,63 @@ class CourseLesson(Document):
 		self.validate_progress_recalculation()
 
 	def validate(self):
+		self.validate_released_edits()
 		self.content = sanitize_editorjs(self.content)
 		self.instructor_content = sanitize_editorjs(self.instructor_content)
+
+	def validate_released_edits(self):
+		if self.is_new() or getattr(self.flags, "direct_publish", False):
+			return
+
+		doc_before_save = self.get_doc_before_save()
+		if not doc_before_save:
+			return
+
+		if doc_before_save.release_status != "Released":
+			return
+
+		course = self.course or frappe.db.get_value("Course Chapter", self.chapter, "course")
+		if not course:
+			return
+
+		course_doc = frappe.db.get_value(
+			"LMS Course",
+			course,
+			["published", "content_release_mode"],
+			as_dict=True,
+		)
+		if not course_doc or not course_doc.published or course_doc.content_release_mode in (None, "", "None"):
+			return
+
+		roles = frappe.get_roles()
+		is_principal_or_admin = "Principal" in roles or "System Manager" in roles
+
+		content_fields = [
+			"title", "content", "body", "youtube", "quiz_id",
+			"question", "file_type", "instructor_notes", "instructor_content"
+		]
+
+		has_changes = any(
+			self.get(f) != doc_before_save.get(f)
+			for f in content_fields
+		)
+
+		if has_changes:
+			for f in content_fields:
+				val = self.get(f)
+				if val is not None:
+					self.set(f"draft_{f}", val)
+				self.set(f, doc_before_save.get(f))
+
+			self.has_unreleased_edits = 1
 
 	def on_update(self):
 		self.validate_quiz_id()
 
 	def validate_progress_recalculation(self):
 		if not self.course or not self.chapter:
+			return
+		if self.release_status != "Released":
 			return
 
 		enrollments = frappe.db.get_all(
@@ -136,23 +216,29 @@ def get_permission_query_conditions(user=None):
 		return ""
 
 	roles = frappe.get_roles(user)
-	if "Moderator" in roles:
+	if "Moderator" in roles or "Principal" in roles or "System Manager" in roles:
 		return ""
 
 	escaped = frappe.db.escape(user)
+	released_condition = "(`tabCourse Lesson`.release_status = 'Released' or `tabCourse Lesson`.release_status is null)"
+	chapter_released_condition = """`tabCourse Lesson`.chapter in (
+		select name from `tabCourse Chapter` where release_status = 'Released' or release_status is null
+	)"""
+
 	conditions = [
 		f"""`tabCourse Lesson`.course in (
 			select parent from `tabCourse Instructor`
 			where instructor = {escaped} and parenttype = 'LMS Course'
 		)""",
-		f"""`tabCourse Lesson`.course in (
+		f"""(`tabCourse Lesson`.course in (
 			select course from `tabLMS Enrollment` where member = {escaped}
-		)""",
+		) and {released_condition} and {chapter_released_condition})""",
 	]
 
 	if user != "Guest" or guest_access_allowed():
 		conditions.append(
-			"""(`tabCourse Lesson`.include_in_preview = 1
+			f"""(`tabCourse Lesson`.include_in_preview = 1
+			and {released_condition} and {chapter_released_condition}
 			and `tabCourse Lesson`.course in (
 				select name from `tabLMS Course` where published = 1
 			))"""

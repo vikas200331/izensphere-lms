@@ -37,7 +37,12 @@ def resolve_lesson_access(lesson: str, *, user: str | None = None) -> tuple[bool
 	if not isinstance(lesson, str) or not lesson:
 		return False, False
 
-	lesson_row = frappe.db.get_value("Course Lesson", lesson, ["course", "include_in_preview"], as_dict=True)
+	lesson_row = frappe.db.get_value(
+		"Course Lesson",
+		lesson,
+		["course", "chapter", "include_in_preview", "release_status"],
+		as_dict=True,
+	)
 	if not lesson_row:
 		return False, False
 
@@ -46,8 +51,25 @@ def resolve_lesson_access(lesson: str, *, user: str | None = None) -> tuple[bool
 	try:
 		# can_modify_course / get_membership / guest_access_allowed read session.user.
 		frappe.session.user = user
-		if can_modify_course(lesson_row.course):
+		roles = frappe.get_roles(user)
+		is_instructor = (
+			can_modify_course(lesson_row.course)
+			or "Principal" in roles
+			or "System Manager" in roles
+			or bool(has_moderator_role(user))
+		)
+		if is_instructor:
 			return True, True
+
+		# Students and guests cannot access unreleased lessons
+		if lesson_row.release_status and lesson_row.release_status != "Released":
+			return False, False
+
+		if lesson_row.chapter:
+			chapter_status = frappe.db.get_value("Course Chapter", lesson_row.chapter, "release_status")
+			if chapter_status and chapter_status != "Released":
+				return False, False
+
 		if get_membership(lesson_row.course, user):
 			return False, True
 		# Preview is for prospective students of a LIVE course. Require the course to be
@@ -94,7 +116,7 @@ def can_access_quiz(quiz: str, *, user: str | None = None) -> bool:
 	if not isinstance(quiz, str) or not quiz:
 		return False
 
-	quiz_row = frappe.db.get_value("LMS Quiz", quiz, ["course", "owner"], as_dict=True)
+	quiz_row = frappe.db.get_value("LMS Quiz", quiz, ["course", "owner", "lesson", "release_status"], as_dict=True)
 	if not quiz_row:
 		return False
 
@@ -103,10 +125,29 @@ def can_access_quiz(quiz: str, *, user: str | None = None) -> bool:
 	try:
 		# The can_modify_* / get_membership helpers read session.user.
 		frappe.session.user = user
+		roles = frappe.get_roles(user)
 
-		# Global admins and the quiz author may always reach it, even when unlinked.
-		if has_moderator_role(user) or quiz_row.owner == user:
+		# Global admins, principals and the quiz author may always reach it, even when unlinked.
+		if has_moderator_role(user) or "Principal" in roles or "System Manager" in roles or quiz_row.owner == user:
 			return True
+
+		# Check if the quiz is linked to an unreleased lesson or chapter
+		lesson = quiz_row.lesson
+		if not lesson:
+			lesson = frappe.db.get_value("Course Lesson", {"quiz_id": quiz}, "name")
+		if lesson:
+			l_row = frappe.db.get_value("Course Lesson", lesson, ["release_status", "chapter"], as_dict=True)
+			if l_row:
+				if l_row.release_status and l_row.release_status != "Released":
+					return False
+				if l_row.chapter:
+					ch_status = frappe.db.get_value("Course Chapter", l_row.chapter, "release_status")
+					if ch_status and ch_status != "Released":
+						return False
+
+		# Standalone quiz release status
+		if quiz_row.release_status and quiz_row.release_status != "Released":
+			return False
 
 		# Courses the quiz belongs to: the authoritative LMS Quiz.course link plus any
 		# lesson that references it via the manually-set quiz_id field.
@@ -121,12 +162,17 @@ def can_access_quiz(quiz: str, *, user: str | None = None) -> bool:
 		assessment_batches = frappe.get_all(
 			"LMS Assessment",
 			filters={"assessment_type": "LMS Quiz", "assessment_name": quiz},
-			pluck="parent",
+			fields=["parent", "release_status"],
 		)
-		for batch in assessment_batches:
+		for assessment in assessment_batches:
+			batch = assessment.parent
 			if batch and (
 				can_modify_batch(batch)
-				or frappe.db.exists("LMS Batch Enrollment", {"batch": batch, "member": user})
+				or "Principal" in roles
+				or (
+					(not assessment.release_status or assessment.release_status == "Released")
+					and frappe.db.exists("LMS Batch Enrollment", {"batch": batch, "member": user})
+				)
 			):
 				return True
 
@@ -154,6 +200,8 @@ def file_has_permission(doc, ptype="read", user=None):
 	if doc.attached_to_doctype != "Course Lesson":
 		return True
 	if doc.attached_to_field not in INSTRUCTOR_FIELDS:
+		if not can_access_lesson(doc.attached_to_name, user=user):
+			return False
 		return True
 
 	if can_access_lesson(doc.attached_to_name, instructor_only=True, user=user):

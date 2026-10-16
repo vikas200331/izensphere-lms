@@ -28,11 +28,37 @@
 				/>
 				<div
 					v-else
-					class="truncate text-base-medium leading-5 text-ink-gray-9"
-					:title="chapter.title"
+					class="flex items-center gap-2 min-w-0"
 					@dblclick="allowEdit && !chapter.is_scorm_package && startRename()"
 				>
-					{{ chapter.title }}
+					<span
+						class="truncate text-base-medium leading-5 text-ink-gray-9"
+						:title="chapter.title"
+					>
+						{{ chapter.title }}
+					</span>
+					<Badge
+						v-if="allowEdit && chapter.release_status === 'Draft'"
+						variant="subtle"
+						theme="orange"
+						size="sm"
+						:label="__('Draft')"
+					/>
+					<Badge
+						v-else-if="allowEdit && chapter.release_status === 'Pending Principal Approval'"
+						variant="subtle"
+						theme="blue"
+						size="sm"
+						:label="__('Pending Approval')"
+					/>
+					<Badge
+						v-else-if="allowEdit && chapter.release_status === 'Rejected'"
+						variant="subtle"
+						theme="red"
+						size="sm"
+						:label="__('Rejected')"
+						:title="chapter.rejection_reason"
+					/>
 				</div>
 			</div>
 			<div class="flex ms-3 items-center gap-x-4 shrink-0">
@@ -110,7 +136,40 @@
 									v-else-if="lesson.icon === 'icon-list'"
 									class="lucide-file-text h-4 w-4 text-ink-gray-9 me-2"
 								/>
-								{{ lesson.title }}
+								<span class="truncate">{{ lesson.title }}</span>
+								<Badge
+									v-if="allowEdit && lesson.release_status === 'Draft'"
+									variant="subtle"
+									theme="orange"
+									size="sm"
+									class="ms-2 shrink-0"
+									:label="__('Draft')"
+								/>
+								<Badge
+									v-else-if="allowEdit && lesson.release_status === 'Pending Principal Approval'"
+									variant="subtle"
+									theme="blue"
+									size="sm"
+									class="ms-2 shrink-0"
+									:label="__('Pending Approval')"
+								/>
+								<Badge
+									v-else-if="allowEdit && lesson.release_status === 'Rejected'"
+									variant="subtle"
+									theme="red"
+									size="sm"
+									class="ms-2 shrink-0"
+									:label="__('Rejected')"
+									:title="lesson.rejection_reason"
+								/>
+								<Badge
+									v-else-if="allowEdit && lesson.has_unreleased_edits"
+									variant="subtle"
+									theme="orange"
+									size="sm"
+									class="ms-2 shrink-0"
+									:label="__('Unreleased Edits')"
+								/>
 								<div v-if="allowEdit" class="ms-auto flex items-center gap-2">
 									<span
 										@click.prevent="
@@ -144,7 +203,7 @@
 </template>
 
 <script setup lang="ts">
-import { Button, TextInput, Tooltip, toast } from 'frappe-ui'
+import { Badge, Button, TextInput, Tooltip, toast } from 'frappe-ui'
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import Draggable from 'vuedraggable'
 import { Disclosure, DisclosureButton, DisclosurePanel } from '@headlessui/vue'
