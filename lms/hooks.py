@@ -327,5 +327,9 @@ fixtures = [
                 "Principal"
             ]]
         ]
-    }
+    },
+    "Workflow State",
+    "Workflow Action Master",
+    "Custom Field",
+    "Property Setter",
 ]
