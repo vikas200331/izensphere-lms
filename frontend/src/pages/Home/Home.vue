@@ -14,7 +14,7 @@
 					</div>
 					<div class="leading-tight flex flex-col">
 						<span class="font-semibold text-blue-50 tracking-wide text-sm">iZenSphere Consulting</span>
-						<a href="https://www.izensphere.com" target="_blank" class="text-amber-400 text-xs font-medium hover:text-amber-300 hover:underline transition-colors cursor-pointer">www.izensphere.com</a>
+						<a href="https://www.izensphere.com" v-external class="text-amber-400 text-xs font-medium hover:text-amber-300 hover:underline transition-colors cursor-pointer">www.izensphere.com</a>
 					</div>
 				</div>
 				

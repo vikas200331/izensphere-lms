@@ -500,6 +500,12 @@ import {
 	saveShortcut,
 } from '@/composables/useKeyboardShortcuts'
 import { sessionStore } from '@/stores/session'
+import { getLmsRoute } from '@/utils/basePath'
+import { openExternal } from '@/utils/openExternal'
+import {
+	computeContentReleaseActions,
+	isAuthorizedApprover,
+} from '@/utils/contentRelease'
 
 import { useRoute, useRouter } from 'vue-router'
 import { sanitizeOnWrite } from '@/utils/sanitizeOnWrite'
@@ -521,6 +527,17 @@ const isModerator = computed(() => Boolean(user.data?.is_moderator))
 const isInstructor = computed(
 	() => Boolean(user.data?.is_instructor || user.data?.is_moderator)
 )
+const isPrincipalUser = computed(() => isAuthorizedApprover(user))
+
+const quizReleaseInfo = createResource({
+	url: 'lms.lms.api.get_content_item_release_info',
+	params: { doctype: 'LMS Quiz', name: props.quizID },
+	auto: Boolean(props.quizID && props.quizID !== 'new'),
+})
+
+const contentReleaseMode = computed(() => {
+	return quizReleaseInfo.data?.content_release_mode || 'None'
+})
 
 const currentReleaseStatus = computed(
 	() => quizDetails.doc?.release_status || 'Released'
@@ -558,7 +575,7 @@ const releaseStatusLabel = computed(() => {
 
 function previewQuiz() {
 	if (!quizDetails.doc?.name) return
-	window.open(`/quiz/${quizDetails.doc.name}`, '_blank')
+	openExternal(getLmsRoute(`quiz/${quizDetails.doc.name}`))
 }
 
 const releaseStatusSubtext = computed(() => {
@@ -589,34 +606,34 @@ const releaseCardClass = computed(() => {
 	}
 })
 
-const canTeacherPublishThis = computed(() => {
-	if (!isInstructor.value) return false
-	return (
-		currentReleaseStatus.value === 'Draft' ||
-		currentReleaseStatus.value === 'Rejected'
+const canManage = computed(() => {
+	const roles = user.data?.roles || []
+	return Boolean(
+		isInstructor.value ||
+		isPrincipalUser.value ||
+		user.data?.is_system_manager ||
+		roles.includes('Course Creator') ||
+		roles.includes('System Manager') ||
+		roles.includes('Administrator')
 	)
 })
 
-const canTeacherSubmitThis = computed(() => {
-	if (!isInstructor.value) return false
-	return (
-		currentReleaseStatus.value === 'Draft' ||
-		currentReleaseStatus.value === 'Rejected'
-	)
+const releaseActions = computed(() => {
+	return computeContentReleaseActions({
+		releaseMode: contentReleaseMode.value,
+		releaseStatus: currentReleaseStatus.value,
+		hasUnreleasedEdits: false,
+		isApprover: isPrincipalUser.value,
+		canManage: canManage.value,
+		isDirty: quizDetails.isDirty,
+		contentExists: Boolean(quizDetails.doc?.name),
+	})
 })
 
-const canPrincipalApproveThis = computed(() => {
-	if (!isModerator.value) return false
-	return (
-		currentReleaseStatus.value === 'Pending Principal Approval' ||
-		currentReleaseStatus.value === 'Draft'
-	)
-})
-
-const canPrincipalRejectThis = computed(() => {
-	if (!isModerator.value) return false
-	return currentReleaseStatus.value === 'Pending Principal Approval'
-})
+const canTeacherPublishThis = computed(() => releaseActions.value.canPublish)
+const canTeacherSubmitThis = computed(() => releaseActions.value.canSubmit)
+const canPrincipalApproveThis = computed(() => releaseActions.value.canApprove)
+const canPrincipalRejectThis = computed(() => releaseActions.value.canReject)
 
 const actionLoading = ref(false)
 const showRejectModal = ref(false)
@@ -729,12 +746,23 @@ function executeContentAction(action, reason) {
 		.then(() => {
 			if (action === 'publish' || action === 'approve') {
 				toast.success(__('Quiz published to students successfully'))
+				if (quizDetails.doc) {
+					quizDetails.doc.release_status = 'Released'
+				}
 			} else if (action === 'submit') {
 				toast.success(__('Quiz submitted for Principal approval'))
+				if (quizDetails.doc) {
+					quizDetails.doc.release_status = 'Pending Principal Approval'
+				}
 			} else if (action === 'reject') {
 				toast.success(__('Quiz rejected and returned to teacher'))
+				if (quizDetails.doc) {
+					quizDetails.doc.release_status = 'Rejected'
+					quizDetails.doc.rejection_reason = reason || ''
+				}
 			}
 			quizDetails.reload()
+			quizReleaseInfo.reload()
 		})
 		.catch((err) => {
 			toast.error(err.messages?.[0] || err.message || err)

@@ -113,64 +113,98 @@
 				</template>
 				{{ __('Enroll') }}
 			</Button>
-			<Button
-				v-if="course.data?.transitions?.includes('Unpublish')"
-				variant="solid"
-				theme="gray"
-				class="mt-4"
-				:loading="publishToggle.loading"
-				@click="togglePublishCourse"
-			>
-				{{ __('Unpublish') }}
-			</Button>
-			<Button
-				v-else-if="course.data?.transitions?.includes('Publish')"
-				variant="solid"
-				theme="gray"
-				class="mt-4"
-				:loading="publishToggle.loading"
-				@click="togglePublishCourse"
-			>
-				{{ __('Publish') }}
-			</Button>
-
-			<template v-if="tab?.key === 'settings' && course.data">
-				<Badge v-if="course.data.workflow_state" :theme="getWorkflowBadgeTheme(course.data.workflow_state)">
+			<!-- Course Workflow Actions & Status (always visible when course is loaded) -->
+			<template v-if="course.data">
+				<Badge
+					v-if="course.data.workflow_state"
+					:theme="getWorkflowBadgeTheme(course.data.workflow_state)"
+					size="sm"
+				>
 					{{ __(course.data.workflow_state) }}
 				</Badge>
-				
-				<div
-					v-if="course.data.workflow_state === 'Rejected' && rejectionReason.data && rejectionReason.data.length > 0"
-					class="mt-4 p-4 bg-red-50 text-red-700 rounded-md border border-red-200"
-				>
-					<div class="font-medium mb-1">{{ __('Rejection Reason:') }}</div>
-					<div class="text-sm">{{ rejectionReason.data[0].content }}</div>
-				</div>
-				
+
+				<!-- Teacher / Creator Submit / Resubmit -->
 				<Button
-					v-if="user.data?.is_principal && course.data.workflow_state === 'Pending Principal Approval'"
+					v-if="canSubmitForApproval"
 					variant="solid"
 					theme="blue"
-					class="mt-4 mr-2"
-					:loading="approveActionToggle.loading"
-					@click="approveCourse"
-				>
-					{{ __('Approve') }}
-				</Button>
-				<Button
-					v-if="canSubmitForApproval(course.data)"
-					variant="solid"
-					theme="blue"
-					class="mt-4"
+					size="sm"
 					:loading="workflowActionToggle.loading"
 					@click="submitForApproval"
 				>
-					{{ __('Submit for Approval') }}
+					<template #prefix>
+						<span class="lucide-file-check size-3.5" />
+					</template>
+					{{ course.data.workflow_state === 'Rejected' ? __('Resubmit for Approval') : __('Submit for Principal Approval') }}
+				</Button>
+
+				<!-- Principal Approve & Publish -->
+				<Button
+					v-if="canPrincipalReviewCourse"
+					variant="solid"
+					theme="green"
+					size="sm"
+					:loading="approveActionToggle.loading"
+					@click="approveCourse"
+				>
+					<template #prefix>
+						<span class="lucide-check-check size-3.5" />
+					</template>
+					{{ __('Approve and Publish') }}
+				</Button>
+
+				<!-- Principal Reject / Request Changes -->
+				<Button
+					v-if="canPrincipalReviewCourse"
+					variant="outline"
+					theme="red"
+					size="sm"
+					:loading="rejectActionToggle.loading"
+					@click="openCourseRejectModal"
+				>
+					<template #prefix>
+						<span class="lucide-x size-3.5" />
+					</template>
+					{{ __('Reject / Request Changes') }}
+				</Button>
+
+				<!-- Principal / Admin Direct Publish -->
+				<Button
+					v-if="course.data?.transitions?.includes('Publish')"
+					variant="solid"
+					theme="green"
+					size="sm"
+					:loading="publishToggle.loading"
+					@click="togglePublishCourse"
+				>
+					<template #prefix>
+						<span class="lucide-send size-3.5" />
+					</template>
+					{{ __('Publish') }}
+				</Button>
+
+				<!-- Principal / Admin Unpublish -->
+				<Button
+					v-if="course.data?.transitions?.includes('Unpublish')"
+					variant="outline"
+					theme="gray"
+					size="sm"
+					:loading="publishToggle.loading"
+					@click="togglePublishCourse"
+				>
+					{{ __('Unpublish') }}
 				</Button>
 			</template>
 		</template>
 
 		<template #solo>
+			<div
+				v-if="course.data?.workflow_state === 'Rejected' && rejectionReason.data && rejectionReason.data.length > 0"
+				class="mx-4 sm:mx-10 mt-4 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200"
+			>
+				<div class="font-semibold text-sm">{{ __('Changes requested by Principal:') }}</div>
+				<div class="text-sm mt-1">{{ rejectionReason.data[0].content }}</div>
+			</div>
 			<CourseOverview v-if="course.data" :course="course" />
 			<SkeletonLoader v-else variant="course-page" />
 		</template>
@@ -255,6 +289,46 @@
 	</TabbedDetailPage>
 	<LessonHelp v-model="showLessonHelp" />
 
+	<Dialog
+		v-model="showCourseRejectModal"
+		:options="{
+			title: __('Reject Course & Request Changes'),
+			actions: [
+				{
+					label: __('Cancel'),
+					onClick: () => {
+						showCourseRejectModal = false
+					},
+				},
+				{
+					label: __('Confirm Rejection / Request Changes'),
+					theme: 'red',
+					variant: 'solid',
+					onClick: confirmCourseReject,
+				},
+			],
+		}"
+	>
+		<template #body-content>
+			<div class="space-y-3 p-4">
+				<p class="text-xs text-ink-gray-6">
+					{{
+						__(
+							'Provide feedback or explain the required changes. The course creator will be notified to revise the course.'
+						)
+					}}
+				</p>
+				<FormControl
+					v-model="courseRejectReason"
+					type="textarea"
+					:label="__('Rejection Reason / Required Changes')"
+					:required="true"
+					placeholder="Explain the changes required..."
+				/>
+			</div>
+		</template>
+	</Dialog>
+
 	<router-view />
 </template>
 <script setup lang="ts">
@@ -266,7 +340,9 @@ import {
 	Badge,
 	Button,
 	createResource,
+	Dialog,
 	Dropdown,
+	FormControl,
 	Tooltip,
 	toast,
 	usePageMeta,
@@ -274,6 +350,7 @@ import {
 import dayjs from 'dayjs'
 import { sessionStore } from '@/stores/session'
 import { useScreenSize } from '@/utils/composables'
+import { isAuthorizedApprover } from '@/utils/contentRelease'
 import TabbedDetailPage from '@/components/Layouts/TabbedDetailPage.vue'
 import type { DetailTab } from '@/components/Layouts/TabbedDetailPage.vue'
 import CourseOverview from '@/pages/Courses/CourseOverview.vue'
@@ -488,19 +565,64 @@ watch(course, () => {
 })
 
 const getWorkflowBadgeTheme = (state: string) => {
-	const map: Record<string, string> = {
-		'Draft': 'red',
-		'Pending Principal Approval': 'red',
-		'Approved': 'red',
-		'Published': 'red',
-		'Rejected': 'red'
+	switch (state) {
+		case 'Draft':
+			return 'orange'
+		case 'Pending Principal Approval':
+			return 'blue'
+		case 'Approved':
+			return 'green'
+		case 'Published':
+			return 'green'
+		case 'Rejected':
+			return 'red'
+		default:
+			return 'gray'
 	}
-	return map[state] || 'red'
 }
 
-const canSubmitForApproval = (data: any) => {
-	return isInstructor() && data && (data.workflow_state === 'Draft' || data.workflow_state === 'Rejected')
+const isInstructor = (): boolean => {
+	let user_is_instructor = false
+	course.data?.instructors.forEach((instructor: CourseInstructorInfo) => {
+		if (!user_is_instructor && instructor.name == user.data?.name) {
+			user_is_instructor = true
+		}
+	})
+	return user_is_instructor
 }
+
+const isPrincipalUser = computed(() => isAuthorizedApprover(user))
+
+const canManageCourse = computed(() => {
+	if (!course.data) return false
+	if (isPrincipalUser.value) return true
+	const roles = user.data?.roles || []
+	if (
+		roles.includes('Moderator') ||
+		roles.includes('Course Creator') ||
+		roles.includes('System Manager') ||
+		roles.includes('Administrator') ||
+		Boolean(user.data?.is_system_manager)
+	) return true
+	if (course.data.owner === user.data?.name) return true
+	return isInstructor()
+})
+
+const canSubmitForApproval = computed(() => {
+	if (!course.data) return false
+	const state = course.data.workflow_state
+	if (state !== 'Draft' && state !== 'Rejected') return false
+	return (
+		canManageCourse.value ||
+		course.data.transitions?.includes('Submit for Approval') ||
+		course.data.transitions?.includes('Edit and Resubmit')
+	)
+})
+
+const canPrincipalReviewCourse = computed(() => {
+	if (!course.data) return false
+	return isPrincipalUser.value && course.data.workflow_state === 'Pending Principal Approval'
+})
 
 const workflowActionToggle = createResource({
 	url: 'lms.lms.api.process_approval',
@@ -508,7 +630,7 @@ const workflowActionToggle = createResource({
 		return {
 			doctype: 'LMS Course',
 			docname: course.data?.name,
-			action: course.data?.workflow_state === 'Rejected' ? 'Edit and Resubmit' : 'Submit for Approval'
+			action: course.data?.workflow_state === 'Rejected' ? 'Edit and Resubmit' : 'Submit for Approval',
 		}
 	},
 	onSuccess() {
@@ -517,7 +639,7 @@ const workflowActionToggle = createResource({
 	},
 	onError(err: any) {
 		toast.error(err.messages?.[0] ?? __('Failed to submit'))
-	}
+	},
 }) as Resource<unknown>
 
 function submitForApproval() {
@@ -530,20 +652,56 @@ const approveActionToggle = createResource({
 		return {
 			doctype: 'LMS Course',
 			docname: course.data?.name,
-			action: 'Approve'
+			action: 'Approve',
 		}
 	},
 	onSuccess() {
-		toast.success(__('Course approved'))
+		toast.success(__('Course approved and published'))
 		course.reload()
 	},
 	onError(err: any) {
 		toast.error(err.messages?.[0] ?? __('Failed to approve course'))
-	}
+	},
 }) as Resource<unknown>
 
 function approveCourse() {
 	approveActionToggle.submit()
+}
+
+const showCourseRejectModal = ref(false)
+const courseRejectReason = ref('')
+
+const rejectActionToggle = createResource({
+	url: 'lms.lms.api.process_approval',
+	makeParams() {
+		return {
+			doctype: 'LMS Course',
+			docname: course.data?.name,
+			action: 'Reject',
+			comments: courseRejectReason.value,
+		}
+	},
+	onSuccess() {
+		toast.success(__('Course rejected and returned for revisions'))
+		showCourseRejectModal.value = false
+		course.reload()
+	},
+	onError(err: any) {
+		toast.error(err.messages?.[0] ?? __('Failed to reject course'))
+	},
+}) as Resource<unknown>
+
+function openCourseRejectModal() {
+	courseRejectReason.value = ''
+	showCourseRejectModal.value = true
+}
+
+function confirmCourseReject() {
+	if (!courseRejectReason.value.trim()) {
+		toast.error(__('Please provide a reason or required changes.'))
+		return
+	}
+	rejectActionToggle.submit()
 }
 
 const rejectionReason = createResource({
@@ -551,23 +709,13 @@ const rejectionReason = createResource({
 	auto: true,
 	makeParams() {
 		return {
-			course: props.courseName
+			course: props.courseName,
 		}
-	}
+	},
 }) as Resource<unknown>
 
-const isInstructor = (): boolean => {
-	let user_is_instructor = false
-	course.data?.instructors.forEach((instructor: CourseInstructorInfo) => {
-		if (!user_is_instructor && instructor.name == user.data?.name) {
-			user_is_instructor = true
-		}
-	})
-	return user_is_instructor
-}
-
 const isAdmin = computed<boolean>(() => {
-	return Boolean(user.data?.is_moderator) || isInstructor()
+	return Boolean(user.data?.is_moderator) || isInstructor() || canManageCourse.value
 })
 
 const breadcrumbs = computed(() => {

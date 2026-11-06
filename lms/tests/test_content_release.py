@@ -13,6 +13,9 @@ from lms.lms.api import (
 	reject_content_item,
 	batch_release_content,
 	get_unreleased_content_summary,
+	is_authorized_approver,
+	get_content_item_release_info,
+	get_pending_content_for_principal,
 )
 
 
@@ -343,7 +346,9 @@ class TestContentRelease(unittest.TestCase):
 		frappe.set_user(self.student)
 		self.assertFalse(can_access_quiz(quiz.name, user=self.student))
 
-		# When lesson is published, student can access quiz
+		# Teacher submits, Principal approves and publishes
+		frappe.set_user(self.teacher)
+		submit_content_item("Course Lesson", l_quiz.name)
 		frappe.set_user(self.principal)
 		approve_content_item("Course Lesson", l_quiz.name)
 
@@ -598,6 +603,217 @@ class TestContentRelease(unittest.TestCase):
 		frappe.set_user("Administrator")
 		frappe.delete_doc("Course Lesson", p_l.name, force=True)
 		frappe.delete_doc("Course Chapter", p_ch.name, force=True)
+
+	def test_14_admin_without_principal_role_cannot_approve(self):
+		"""14. Administrator without explicit Principal role cannot approve content or view pending approvals."""
+		frappe.set_user("Administrator")
+		# Ensure Administrator does not have Principal role in Has Role table
+		frappe.db.delete("Has Role", {"parent": "Administrator", "role": "Principal", "parenttype": "User"})
+		frappe.clear_cache(user="Administrator")
+
+		self.assertFalse(is_authorized_approver("Administrator"))
+
+		# Teacher creates and submits a lesson
+		frappe.set_user(self.teacher)
+		l_admin_test = frappe.new_doc("Course Lesson")
+		l_admin_test.title = "Lesson Admin Auth Test"
+		l_admin_test.chapter = self.ch1_name
+		l_admin_test.course = self.course
+		l_admin_test.insert(ignore_permissions=True)
+		submit_content_item("Course Lesson", l_admin_test.name)
+
+		# Administrator attempts to approve -> denied
+		frappe.set_user("Administrator")
+		with self.assertRaises(frappe.PermissionError):
+			approve_content_item("Course Lesson", l_admin_test.name)
+
+		with self.assertRaises(frappe.PermissionError):
+			reject_content_item("Course Lesson", l_admin_test.name, reason="No permission")
+
+		with self.assertRaises(frappe.PermissionError):
+			get_pending_content_for_principal()
+
+		# Cleanup
+		frappe.delete_doc("Course Lesson", l_admin_test.name, force=True)
+
+	def test_15_admin_with_explicit_principal_role_can_approve(self):
+		"""15. Administrator WITH explicit Principal role CAN approve pending submissions."""
+		frappe.set_user("Administrator")
+		# Explicitly add Principal role to Administrator
+		if not frappe.db.exists("Has Role", {"parent": "Administrator", "role": "Principal", "parenttype": "User"}):
+			hr = frappe.new_doc("Has Role")
+			hr.parent = "Administrator"
+			hr.parenttype = "User"
+			hr.role = "Principal"
+			hr.insert(ignore_permissions=True)
+		frappe.clear_cache(user="Administrator")
+
+		self.assertTrue(is_authorized_approver("Administrator"))
+
+		# Teacher creates and submits a lesson
+		frappe.set_user(self.teacher)
+		l_admin_appr = frappe.new_doc("Course Lesson")
+		l_admin_appr.title = "Lesson Admin Approval Allowed Test"
+		l_admin_appr.chapter = self.ch1_name
+		l_admin_appr.course = self.course
+		l_admin_appr.insert(ignore_permissions=True)
+		submit_content_item("Course Lesson", l_admin_appr.name)
+
+		# Administrator now can approve
+		frappe.set_user("Administrator")
+		res = approve_content_item("Course Lesson", l_admin_appr.name)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(frappe.db.get_value("Course Lesson", l_admin_appr.name, "release_status"), "Released")
+
+		# Clean up role and lesson
+		frappe.db.delete("Has Role", {"parent": "Administrator", "role": "Principal", "parenttype": "User"})
+		frappe.clear_cache(user="Administrator")
+		frappe.delete_doc("Course Lesson", l_admin_appr.name, force=True)
+
+	def test_16_cannot_approve_draft_without_submission(self):
+		"""16. Draft content that has not been submitted cannot be approved."""
+		frappe.set_user(self.teacher)
+		l_draft = frappe.new_doc("Course Lesson")
+		l_draft.title = "Unsubmitted Draft Lesson"
+		l_draft.chapter = self.ch1_name
+		l_draft.course = self.course
+		l_draft.insert(ignore_permissions=True)
+
+		self.assertEqual(l_draft.release_status, "Draft")
+
+		# Principal attempts to approve unsubmitted draft -> rejected with ValidationError
+		frappe.set_user(self.principal)
+		with self.assertRaises(frappe.exceptions.ValidationError):
+			approve_content_item("Course Lesson", l_draft.name)
+
+		# Cleanup
+		frappe.set_user("Administrator")
+		frappe.delete_doc("Course Lesson", l_draft.name, force=True)
+
+	def test_17_cannot_directly_publish_in_principal_approval_required(self):
+		"""17. Direct publication is rejected in 'Principal Approval Required' mode for all roles."""
+		frappe.db.set_value("LMS Course", self.course, "content_release_mode", "Principal Approval Required")
+		frappe.set_user(self.teacher)
+		l_dir = frappe.new_doc("Course Lesson")
+		l_dir.title = "Direct Publish Test"
+		l_dir.chapter = self.ch1_name
+		l_dir.course = self.course
+		l_dir.insert(ignore_permissions=True)
+
+		# Teacher direct publish rejected
+		with self.assertRaises(frappe.exceptions.ValidationError):
+			publish_content_item("Course Lesson", l_dir.name)
+
+		# Principal direct publish rejected
+		frappe.set_user(self.principal)
+		with self.assertRaises(frappe.exceptions.ValidationError):
+			publish_content_item("Course Lesson", l_dir.name)
+
+		# Admin direct publish rejected
+		frappe.set_user("Administrator")
+		with self.assertRaises(frappe.exceptions.ValidationError):
+			publish_content_item("Course Lesson", l_dir.name)
+
+		frappe.delete_doc("Course Lesson", l_dir.name, force=True)
+
+	def test_18_teacher_choice_mode_permissions(self):
+		"""18. In 'Teacher Choice' mode, teachers can publish directly or submit; pending items cannot be published directly."""
+		frappe.db.set_value("LMS Course", self.course, "content_release_mode", "Teacher Choice")
+		frappe.set_user(self.teacher)
+
+		# 1. Direct publish option
+		l_choice_pub = frappe.new_doc("Course Lesson")
+		l_choice_pub.title = "Choice Direct Publish"
+		l_choice_pub.chapter = self.ch1_name
+		l_choice_pub.course = self.course
+		l_choice_pub.insert(ignore_permissions=True)
+
+		pub_res = publish_content_item("Course Lesson", l_choice_pub.name)
+		self.assertEqual(pub_res["status"], "success")
+		self.assertEqual(frappe.db.get_value("Course Lesson", l_choice_pub.name, "release_status"), "Released")
+
+		# 2. Submit for approval option
+		l_choice_sub = frappe.new_doc("Course Lesson")
+		l_choice_sub.title = "Choice Submit"
+		l_choice_sub.chapter = self.ch1_name
+		l_choice_sub.course = self.course
+		l_choice_sub.insert(ignore_permissions=True)
+
+		sub_res = submit_content_item("Course Lesson", l_choice_sub.name)
+		self.assertEqual(sub_res["status"], "success")
+		self.assertEqual(frappe.db.get_value("Course Lesson", l_choice_sub.name, "release_status"), "Pending Principal Approval")
+
+		# Once pending, teacher cannot directly publish it
+		with self.assertRaises(frappe.exceptions.ValidationError):
+			publish_content_item("Course Lesson", l_choice_sub.name)
+
+		# Principal approves
+		frappe.set_user(self.principal)
+		app_res = approve_content_item("Course Lesson", l_choice_sub.name)
+		self.assertEqual(app_res["status"], "success")
+		self.assertEqual(frappe.db.get_value("Course Lesson", l_choice_sub.name, "release_status"), "Released")
+
+		# Reset course mode
+		frappe.db.set_value("LMS Course", self.course, "content_release_mode", "Principal Approval Required")
+		frappe.set_user("Administrator")
+		frappe.delete_doc("Course Lesson", l_choice_pub.name, force=True)
+		frappe.delete_doc("Course Lesson", l_choice_sub.name, force=True)
+
+	def test_19_self_approval_blocked_for_teacher(self):
+		"""19. Teachers cannot approve their own submitted content when Principal approval is required."""
+		frappe.db.set_value("LMS Course", self.course, "content_release_mode", "Principal Approval Required")
+		frappe.set_user(self.teacher)
+
+		l_self = frappe.new_doc("Course Lesson")
+		l_self.title = "Self Approval Test"
+		l_self.chapter = self.ch1_name
+		l_self.course = self.course
+		l_self.insert(ignore_permissions=True)
+		submit_content_item("Course Lesson", l_self.name)
+
+		# Even if teacher temporarily has Principal role added, they cannot approve their own content
+		frappe.set_user("Administrator")
+		hr = frappe.get_doc({
+			"doctype": "Has Role",
+			"parent": self.teacher,
+			"parenttype": "User",
+			"role": "Principal",
+		}).insert(ignore_permissions=True)
+		frappe.clear_cache(user=self.teacher)
+
+		frappe.set_user(self.teacher)
+		with self.assertRaises(frappe.PermissionError):
+			approve_content_item("Course Lesson", l_self.name)
+
+		# Cleanup role and lesson
+		frappe.set_user("Administrator")
+		hr.delete(ignore_permissions=True)
+		frappe.clear_cache(user=self.teacher)
+		frappe.delete_doc("Course Lesson", l_self.name, force=True)
+
+	def test_20_container_mismatch_and_status_validation(self):
+		"""20. Validate content item release info and container match validation."""
+		frappe.set_user(self.teacher)
+		l_info = frappe.new_doc("Course Lesson")
+		l_info.title = "Release Info Test"
+		l_info.chapter = self.ch1_name
+		l_info.course = self.course
+		l_info.insert(ignore_permissions=True)
+
+		info = get_content_item_release_info("Course Lesson", l_info.name)
+		self.assertEqual(info["doctype"], "Course Lesson")
+		self.assertEqual(info["name"], l_info.name)
+		self.assertEqual(info["container_type"], "LMS Course")
+		self.assertEqual(info["container_name"], self.course)
+		self.assertEqual(info["content_release_mode"], "Principal Approval Required")
+		self.assertEqual(info["release_status"], "Draft")
+
+		# Batch release with wrong container raises ValidationError
+		with self.assertRaises(frappe.exceptions.ValidationError):
+			batch_release_content(course="non-existent-course", action="submit", item_keys=[f"lesson:{l_info.name}"])
+
+		frappe.set_user("Administrator")
+		frappe.delete_doc("Course Lesson", l_info.name, force=True)
 
 	@classmethod
 	def tearDownClass(cls):

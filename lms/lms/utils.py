@@ -3097,25 +3097,35 @@ def validate_batch_access(batch: str):
 
 
 def can_modify_course(course: str) -> bool:
+	user = frappe.session.user
+	roles = frappe.get_roles(user)
+	if "System Manager" in roles or "Principal" in roles:
+		return True
 	is_instructor = frappe.db.exists(
 		"Course Instructor",
-		{"instructor": frappe.session.user, "parent": course, "parenttype": "LMS Course"},
+		{"instructor": user, "parent": course, "parenttype": "LMS Course"},
 	)
-	if not (has_moderator_role() or is_instructor):
+	is_owner = frappe.db.get_value("LMS Course", course, "owner") == user
+	if not (has_moderator_role() or is_instructor or is_owner or "Course Creator" in roles):
 		return False
 	return True
 
 
 def can_modify_batch(batch: str) -> bool:
+	user = frappe.session.user
+	roles = frappe.get_roles(user)
+	if "System Manager" in roles or "Principal" in roles:
+		return True
 	is_instructor = frappe.db.exists(
 		"Course Instructor",
 		{
-			"instructor": frappe.session.user,
+			"instructor": user,
 			"parent": batch,
 			"parenttype": "LMS Batch",
 		},
 	)
-	if not (has_moderator_role() or is_instructor):
+	is_owner = frappe.db.get_value("LMS Batch", batch, "owner") == user
+	if not (has_moderator_role() or is_instructor or is_owner or "Course Creator" in roles):
 		return False
 	return True
 

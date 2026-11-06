@@ -323,6 +323,12 @@ import {
 	useKeyboardShortcuts,
 	saveShortcut,
 } from '@/composables/useKeyboardShortcuts'
+import { getLmsRoute } from '@/utils/basePath'
+import { openExternal } from '@/utils/openExternal'
+import {
+	computeContentReleaseActions,
+	isAuthorizedApprover,
+} from '@/utils/contentRelease'
 
 const { isMobile } = useScreenSize()
 const showLessonDetails = ref(false)
@@ -414,13 +420,18 @@ function markDirty({ fromTitle = false } = {}) {
 	autoSave()
 }
 
-const isPrincipalUser = computed(() => {
+const isPrincipalUser = computed(() => isAuthorizedApprover(user))
+
+const canManageContent = computed(() => {
 	const roles = user.data?.roles || []
-	return (
-		Boolean(user.data?.is_principal) ||
-		roles.includes('Principal') ||
+	return Boolean(
+		user.data?.is_moderator ||
+		user.data?.is_instructor ||
+		isPrincipalUser.value ||
+		user.data?.is_system_manager ||
+		roles.includes('Course Creator') ||
 		roles.includes('System Manager') ||
-		Boolean(user.data?.is_system_manager)
+		roles.includes('Administrator')
 	)
 })
 
@@ -434,6 +445,18 @@ const currentReleaseStatus = computed(() => {
 
 const hasUnreleasedEdits = computed(() => {
 	return Boolean(lessonDetails.data?.lesson?.has_unreleased_edits)
+})
+
+const releaseActions = computed(() => {
+	return computeContentReleaseActions({
+		releaseMode: contentReleaseMode.value,
+		releaseStatus: currentReleaseStatus.value,
+		hasUnreleasedEdits: hasUnreleasedEdits.value,
+		isApprover: isPrincipalUser.value,
+		canManage: canManageContent.value,
+		isDirty: isDirty.value,
+		contentExists: Boolean(lessonDetails.data?.lesson?.name),
+	})
 })
 
 const releaseStatusLabel = computed(() => {
@@ -488,35 +511,10 @@ const releaseStatusSubtext = computed(() => {
 	return __('Hidden from students')
 })
 
-const canTeacherPublishThis = computed(() => {
-	if (contentReleaseMode.value === 'None') return false
-	if (contentReleaseMode.value !== 'Teacher Can Publish' && contentReleaseMode.value !== 'Teacher Choice' && !isPrincipalUser.value) return false
-	const st = currentReleaseStatus.value
-	const edits = hasUnreleasedEdits.value
-	return st === 'Draft' || st === 'Rejected' || edits
-})
-
-const canTeacherSubmitThis = computed(() => {
-	if (contentReleaseMode.value === 'None') return false
-	if (contentReleaseMode.value !== 'Principal Approval Required' && contentReleaseMode.value !== 'Teacher Choice') return false
-	const st = currentReleaseStatus.value
-	const edits = hasUnreleasedEdits.value
-	return st === 'Draft' || st === 'Rejected' || edits
-})
-
-const canPrincipalApproveThis = computed(() => {
-	if (!isPrincipalUser.value) return false
-	if (contentReleaseMode.value === 'None') return false
-	const st = currentReleaseStatus.value
-	const edits = hasUnreleasedEdits.value
-	return st === 'Pending Principal Approval' || st === 'Draft' || st === 'Rejected' || edits
-})
-
-const canPrincipalRejectThis = computed(() => {
-	if (!isPrincipalUser.value) return false
-	if (contentReleaseMode.value === 'None') return false
-	return currentReleaseStatus.value === 'Pending Principal Approval'
-})
+const canTeacherPublishThis = computed(() => releaseActions.value.canPublish)
+const canTeacherSubmitThis = computed(() => releaseActions.value.canSubmit)
+const canPrincipalApproveThis = computed(() => releaseActions.value.canApprove)
+const canPrincipalRejectThis = computed(() => releaseActions.value.canReject)
 
 const isSavingDraft = ref(false)
 function manualSaveDraft() {
@@ -534,18 +532,15 @@ function manualSaveDraft() {
 	}
 }
 
-const canTeacherSaveDraft = computed(() => {
-	return Boolean(lessonDetails.data?.lesson) && (currentReleaseStatus.value === 'Draft' || currentReleaseStatus.value === 'Rejected' || hasUnreleasedEdits.value || isDirty.value)
-})
-
-const canPreviewLesson = computed(() => {
-	return Boolean(lessonDetails.data?.lesson?.name)
-})
+const canTeacherSaveDraft = computed(() => releaseActions.value.canSaveDraft)
+const canPreviewLesson = computed(() => releaseActions.value.canPreview)
 
 function previewLesson() {
 	if (!props.courseName || !props.chapterNumber || !props.lessonNumber) return
-	const url = `/courses/${props.courseName}/learn/${props.chapterNumber}-${props.lessonNumber}`
-	window.open(url, '_blank')
+	const url = getLmsRoute(
+		`courses/${props.courseName}/learn/${props.chapterNumber}-${props.lessonNumber}`
+	)
+	openExternal(url)
 }
 
 const actionLoading = ref(false)
@@ -659,10 +654,21 @@ function executeContentAction(action, reason) {
 		.then(() => {
 			if (action === 'publish' || action === 'approve') {
 				toast.success(__('Content published to students successfully'))
+				if (lessonDetails.data?.lesson) {
+					lessonDetails.data.lesson.release_status = 'Released'
+					lessonDetails.data.lesson.has_unreleased_edits = 0
+				}
 			} else if (action === 'submit') {
 				toast.success(__('Content submitted for Principal approval'))
+				if (lessonDetails.data?.lesson) {
+					lessonDetails.data.lesson.release_status = 'Pending Principal Approval'
+				}
 			} else if (action === 'reject') {
 				toast.success(__('Content rejected and sent back to author'))
+				if (lessonDetails.data?.lesson) {
+					lessonDetails.data.lesson.release_status = 'Rejected'
+					lessonDetails.data.lesson.rejection_reason = reason || ''
+				}
 			}
 			lessonDetails.reload()
 			emit('saved', {

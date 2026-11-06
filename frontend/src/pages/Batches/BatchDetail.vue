@@ -12,47 +12,86 @@
 			<Badge v-if="tab?.key === 'settings' && instance?.isDirty" theme="orange">
 				{{ __('Not Saved') }}
 			</Badge>
-			<Button
-				v-if="batch.data?.transitions?.includes('Unpublish')"
-				variant="solid"
-				theme="gray"
-				:loading="publishToggle.loading"
-				@click="togglePublishBatch"
-			>
-				{{ __('Unpublish') }}
-			</Button>
-			<Button
-				v-else-if="batch.data?.transitions?.includes('Publish')"
-				variant="solid"
-				theme="gray"
-				:loading="publishToggle.loading"
-				@click="togglePublishBatch"
-			>
-				{{ __('Publish') }}
-			</Button>
-
-			<template v-if="tab?.key === 'settings' && batch.data">
-				<Badge v-if="batch.data.workflow_state" :theme="getWorkflowBadgeTheme(batch.data.workflow_state)">
+			<!-- Batch Workflow Actions & Status (always visible when batch is loaded) -->
+			<template v-if="batch.data">
+				<Badge
+					v-if="batch.data.workflow_state"
+					:theme="getWorkflowBadgeTheme(batch.data.workflow_state)"
+					size="sm"
+				>
 					{{ __(batch.data.workflow_state) }}
 				</Badge>
-				
-				<div
-					v-if="batch.data.workflow_state === 'Rejected' && rejectionReason.data && rejectionReason.data.length > 0"
-					class="mt-4 p-4 bg-red-50 text-red-700 rounded-md border border-red-200"
-				>
-					<div class="font-medium mb-1">{{ __('Rejection Reason:') }}</div>
-					<div class="text-sm">{{ rejectionReason.data[0].content }}</div>
-				</div>
-				
+
+				<!-- Teacher / Creator Submit / Resubmit -->
 				<Button
-					v-if="canSubmitForApproval(batch.data)"
+					v-if="canSubmitForApproval"
 					variant="solid"
 					theme="blue"
-					class="mt-4"
+					size="sm"
 					:loading="workflowActionToggle.loading"
 					@click="submitForApproval"
 				>
-					{{ __('Submit for Approval') }}
+					<template #prefix>
+						<span class="lucide-file-check size-3.5" />
+					</template>
+					{{ batch.data.workflow_state === 'Rejected' ? __('Resubmit for Approval') : __('Submit for Principal Approval') }}
+				</Button>
+
+				<!-- Principal Approve & Publish -->
+				<Button
+					v-if="canPrincipalReviewBatch"
+					variant="solid"
+					theme="green"
+					size="sm"
+					:loading="approveActionToggle.loading"
+					@click="approveBatch"
+				>
+					<template #prefix>
+						<span class="lucide-check-check size-3.5" />
+					</template>
+					{{ __('Approve and Publish') }}
+				</Button>
+
+				<!-- Principal Reject / Request Changes -->
+				<Button
+					v-if="canPrincipalReviewBatch"
+					variant="outline"
+					theme="red"
+					size="sm"
+					:loading="rejectActionToggle.loading"
+					@click="openBatchRejectModal"
+				>
+					<template #prefix>
+						<span class="lucide-x size-3.5" />
+					</template>
+					{{ __('Reject / Request Changes') }}
+				</Button>
+
+				<!-- Principal Direct Publish -->
+				<Button
+					v-if="batch.data?.transitions?.includes('Publish')"
+					variant="solid"
+					theme="green"
+					size="sm"
+					:loading="publishToggle.loading"
+					@click="togglePublishBatch"
+				>
+					<template #prefix>
+						<span class="lucide-send size-3.5" />
+					</template>
+					{{ __('Publish') }}
+				</Button>
+
+				<!-- Principal Direct Unpublish -->
+				<Button
+					v-if="batch.data?.transitions?.includes('Unpublish')"
+					variant="outline"
+					theme="gray"
+					size="sm"
+					:loading="publishToggle.loading"
+					@click="togglePublishBatch"
+				>
+					{{ __('Unpublish') }}
 				</Button>
 			</template>
 			<Dropdown
@@ -111,6 +150,13 @@
 		</template>
 
 		<template #solo>
+			<div
+				v-if="batch.data?.workflow_state === 'Rejected' && rejectionReason.data && rejectionReason.data.length > 0"
+				class="mx-4 sm:mx-10 mt-4 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200"
+			>
+				<div class="font-semibold text-sm">{{ __('Changes requested by Principal:') }}</div>
+				<div class="text-sm mt-1">{{ rejectionReason.data[0].content }}</div>
+			</div>
 			<BatchOverview v-if="batch.data" :batch="batch" />
 			<SkeletonLoader v-else variant="course-page" />
 		</template>
@@ -129,16 +175,58 @@
 		</template>
 	</TabbedDetailPage>
 
+	<Dialog
+		v-model="showBatchRejectModal"
+		:options="{
+			title: __('Reject Batch & Request Changes'),
+			actions: [
+				{
+					label: __('Cancel'),
+					onClick: () => {
+						showBatchRejectModal = false
+					},
+				},
+				{
+					label: __('Confirm Rejection / Request Changes'),
+					theme: 'red',
+					variant: 'solid',
+					onClick: confirmBatchReject,
+				},
+			],
+		}"
+	>
+		<template #body-content>
+			<div class="space-y-3 p-4">
+				<p class="text-xs text-ink-gray-6">
+					{{
+						__(
+							'Provide feedback or explain the required changes. The batch creator will be notified to revise the batch.'
+						)
+					}}
+				</p>
+				<FormControl
+					v-model="batchRejectReason"
+					type="textarea"
+					:label="__('Rejection Reason / Required Changes')"
+					:required="true"
+					placeholder="Explain the changes required..."
+				/>
+			</div>
+		</template>
+	</Dialog>
+
 	<router-view />
 </template>
 <script setup>
-import { computed, inject, markRaw, provide, useTemplateRef, watch } from 'vue'
+import { computed, inject, markRaw, provide, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
 	Badge,
 	Button,
 	createResource,
+	Dialog,
 	Dropdown,
+	FormControl,
 	Tooltip,
 	toast,
 	usePageMeta,
@@ -158,6 +246,7 @@ import ShortcutTooltip from '@/components/ShortcutTooltip.vue'
 import SkeletonLoader from '@/components/SkeletonLoader.vue'
 import TabbedDetailPage from '@/components/Layouts/TabbedDetailPage.vue'
 import { openBatchForm } from '@/composables/useBatchForms'
+import { isAuthorizedApprover } from '@/utils/contentRelease'
 
 const router = useRouter()
 // Read by every form opener below. TabbedDetailPage still keeps the active tab
@@ -308,19 +397,54 @@ const togglePublishBatch = () => {
 }
 
 const getWorkflowBadgeTheme = (state) => {
-	const map = {
-		'Draft': 'red',
-		'Pending Principal Approval': 'red',
-		'Approved': 'red',
-		'Published': 'red',
-		'Rejected': 'red'
+	switch (state) {
+		case 'Draft':
+			return 'orange'
+		case 'Pending Principal Approval':
+			return 'blue'
+		case 'Approved':
+			return 'green'
+		case 'Published':
+			return 'green'
+		case 'Rejected':
+			return 'red'
+		default:
+			return 'gray'
 	}
-	return map[state] || 'red'
 }
 
-const canSubmitForApproval = (data) => {
-	return data && (data.workflow_state === 'Draft' || data.workflow_state === 'Rejected')
-}
+const isPrincipalUser = computed(() => isAuthorizedApprover(user))
+
+const canManageBatch = computed(() => {
+	if (!batch.data) return false
+	if (isPrincipalUser.value) return true
+	const roles = user.data?.roles || []
+	if (
+		roles.includes('Moderator') ||
+		roles.includes('Course Creator') ||
+		roles.includes('System Manager') ||
+		roles.includes('Administrator') ||
+		Boolean(user.data?.is_system_manager)
+	) return true
+	if (batch.data.owner === user.data?.name) return true
+	return isAdmin.value
+})
+
+const canSubmitForApproval = computed(() => {
+	if (!batch.data) return false
+	const state = batch.data.workflow_state
+	if (state !== 'Draft' && state !== 'Rejected') return false
+	return (
+		canManageBatch.value ||
+		batch.data.transitions?.includes('Submit for Approval') ||
+		batch.data.transitions?.includes('Edit and Resubmit')
+	)
+})
+
+const canPrincipalReviewBatch = computed(() => {
+	if (!batch.data) return false
+	return isPrincipalUser.value && batch.data.workflow_state === 'Pending Principal Approval'
+})
 
 const workflowActionToggle = createResource({
 	url: 'lms.lms.api.process_approval',
@@ -328,7 +452,7 @@ const workflowActionToggle = createResource({
 		return {
 			doctype: 'LMS Batch',
 			docname: batch.data?.name,
-			action: batch.data?.workflow_state === 'Rejected' ? 'Edit and Resubmit' : 'Submit for Approval'
+			action: batch.data?.workflow_state === 'Rejected' ? 'Edit and Resubmit' : 'Submit for Approval',
 		}
 	},
 	onSuccess() {
@@ -337,11 +461,69 @@ const workflowActionToggle = createResource({
 	},
 	onError(err) {
 		toast.error(err.messages?.[0] ?? __('Failed to submit'))
-	}
+	},
 })
 
 const submitForApproval = () => {
 	workflowActionToggle.submit()
+}
+
+const approveActionToggle = createResource({
+	url: 'lms.lms.api.process_approval',
+	makeParams() {
+		return {
+			doctype: 'LMS Batch',
+			docname: batch.data?.name,
+			action: 'Approve',
+		}
+	},
+	onSuccess() {
+		toast.success(__('Batch approved and published'))
+		batch.reload()
+	},
+	onError(err) {
+		toast.error(err.messages?.[0] ?? __('Failed to approve batch'))
+	},
+})
+
+const approveBatch = () => {
+	approveActionToggle.submit()
+}
+
+const showBatchRejectModal = ref(false)
+const batchRejectReason = ref('')
+
+const rejectActionToggle = createResource({
+	url: 'lms.lms.api.process_approval',
+	makeParams() {
+		return {
+			doctype: 'LMS Batch',
+			docname: batch.data?.name,
+			action: 'Reject',
+			comments: batchRejectReason.value,
+		}
+	},
+	onSuccess() {
+		toast.success(__('Batch rejected and returned for revisions'))
+		showBatchRejectModal.value = false
+		batch.reload()
+	},
+	onError(err) {
+		toast.error(err.messages?.[0] ?? __('Failed to reject batch'))
+	},
+})
+
+const openBatchRejectModal = () => {
+	batchRejectReason.value = ''
+	showBatchRejectModal.value = true
+}
+
+const confirmBatchReject = () => {
+	if (!batchRejectReason.value.trim()) {
+		toast.error(__('Please provide a reason or required changes.'))
+		return
+	}
+	rejectActionToggle.submit()
 }
 
 const rejectionReason = createResource({

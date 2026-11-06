@@ -105,7 +105,7 @@
 
 					<!-- Principal Action: Approve and Publish -->
 					<Button
-						v-if="isPrincipal && unreleasedSummary.data.pending_count > 0"
+						v-if="canPrincipalApprove"
 						variant="solid"
 						theme="green"
 						size="sm"
@@ -120,7 +120,7 @@
 
 					<!-- Principal Action: Reject / Request Changes -->
 					<Button
-						v-if="isPrincipal && unreleasedSummary.data.pending_count > 0"
+						v-if="canPrincipalReject"
 						variant="outline"
 						theme="red"
 						size="sm"
@@ -238,12 +238,18 @@ import {
 	FormControl,
 	toast,
 } from 'frappe-ui'
+import {
+	computeBatchReleaseActions,
+	isAuthorizedApprover,
+} from '@/utils/contentRelease'
 import { computed, getCurrentInstance, inject, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Draggable from 'vuedraggable'
 
 import ChapterRow from '@/components/ChapterRow.vue'
 import { openFormRoute } from '@/composables/useFormRoute'
+import { getLmsRoute } from '@/utils/basePath'
+import { openExternal } from '@/utils/openExternal'
 import type { OutlineChapter, OutlineLesson, Resource, SessionUser } from '@/types'
 
 interface DraggableEvent {
@@ -354,14 +360,19 @@ const batchRelease = createResource({
 const releaseMode = computed(
 	() => unreleasedSummary.data?.content_release_mode || 'None'
 )
-const isPrincipal = computed(
-	() =>
-		Boolean(
-			user?.data?.is_principal ||
-				user?.data?.is_system_manager ||
-				user?.data?.roles?.includes('Principal')
-		)
-)
+const isPrincipal = computed(() => isAuthorizedApprover(user))
+
+const batchActions = computed(() => {
+	return computeBatchReleaseActions({
+		releaseMode: releaseMode.value,
+		draftCount: unreleasedSummary.data?.draft_count ?? 0,
+		pendingCount: unreleasedSummary.data?.pending_count ?? 0,
+		rejectedCount: unreleasedSummary.data?.rejected_count ?? 0,
+		isApprover: isPrincipal.value,
+		canManage: Boolean(props.allowEdit),
+		hasContainer: Boolean(course.data?.name),
+	})
+})
 
 const releaseModeLabel = computed(() => {
 	const mode = releaseMode.value
@@ -372,26 +383,10 @@ const releaseModeLabel = computed(() => {
 	return __('Mode: Standard')
 })
 
-const canTeacherPublish = computed(() => {
-	if (!props.allowEdit) return false
-	if (isPrincipal.value) return true
-	return (
-		(releaseMode.value === 'Teacher Can Publish' ||
-			releaseMode.value === 'Teacher Choice') &&
-		((unreleasedSummary.data?.draft_count ?? 0) > 0 ||
-			(unreleasedSummary.data?.rejected_count ?? 0) > 0)
-	)
-})
-
-const canTeacherSubmit = computed(() => {
-	if (!props.allowEdit) return false
-	return (
-		(releaseMode.value === 'Principal Approval Required' ||
-			releaseMode.value === 'Teacher Choice') &&
-		((unreleasedSummary.data?.draft_count ?? 0) > 0 ||
-			(unreleasedSummary.data?.rejected_count ?? 0) > 0)
-	)
-})
+const canTeacherPublish = computed(() => batchActions.value.canPublish)
+const canTeacherSubmit = computed(() => batchActions.value.canSubmit)
+const canPrincipalApprove = computed(() => batchActions.value.canApprove)
+const canPrincipalReject = computed(() => batchActions.value.canReject)
 
 function confirmPublishAll() {
 	$dialog({
@@ -483,7 +478,7 @@ function submitRejection() {
 
 function previewCourse() {
 	if (!props.courseName) return
-	window.open(`/courses/${props.courseName}`, '_blank')
+	openExternal(getLmsRoute(`courses/${props.courseName}`))
 }
 
 defineExpose({ openChapterForm, unreleasedSummary })

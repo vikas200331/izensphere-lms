@@ -82,7 +82,7 @@
 
 					<!-- Principal Action: Approve and Publish -->
 					<Button
-						v-if="isPrincipal && unreleasedSummary.data.pending_count > 0"
+						v-if="canPrincipalApprove"
 						variant="solid"
 						theme="green"
 						size="sm"
@@ -97,7 +97,7 @@
 
 					<!-- Principal Action: Reject / Request Changes -->
 					<Button
-						v-if="isPrincipal && unreleasedSummary.data.pending_count > 0"
+						v-if="canPrincipalReject"
 						variant="outline"
 						theme="red"
 						size="sm"
@@ -198,6 +198,10 @@
 </template>
 <script setup>
 import { createResource, Button, Badge, Dialog, FormControl, toast } from 'frappe-ui'
+import {
+	computeBatchReleaseActions,
+	isAuthorizedApprover,
+} from '@/utils/contentRelease'
 import { computed, inject, ref, getCurrentInstance } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { openBatchForm } from '@/composables/useBatchForms'
@@ -290,14 +294,19 @@ const batchRelease = createResource({
 const releaseMode = computed(
 	() => unreleasedSummary.data?.content_release_mode || 'None'
 )
-const isPrincipal = computed(
-	() =>
-		Boolean(
-			user?.data?.is_principal ||
-				user?.data?.is_system_manager ||
-				user?.data?.roles?.includes('Principal')
-		)
-)
+const isPrincipal = computed(() => isAuthorizedApprover(user))
+
+const batchActions = computed(() => {
+	return computeBatchReleaseActions({
+		releaseMode: releaseMode.value,
+		draftCount: unreleasedSummary.data?.draft_count ?? 0,
+		pendingCount: unreleasedSummary.data?.pending_count ?? 0,
+		rejectedCount: unreleasedSummary.data?.rejected_count ?? 0,
+		isApprover: isPrincipal.value,
+		canManage: canAddAssessments(),
+		hasContainer: Boolean(props.batch),
+	})
+})
 
 const releaseModeLabel = computed(() => {
 	const mode = releaseMode.value
@@ -308,26 +317,10 @@ const releaseModeLabel = computed(() => {
 	return __('Mode: Standard')
 })
 
-const canTeacherPublish = computed(() => {
-	if (!canAddAssessments()) return false
-	if (isPrincipal.value) return true
-	return (
-		(releaseMode.value === 'Teacher Can Publish' ||
-			releaseMode.value === 'Teacher Choice') &&
-		((unreleasedSummary.data?.draft_count ?? 0) > 0 ||
-			(unreleasedSummary.data?.rejected_count ?? 0) > 0)
-	)
-})
-
-const canTeacherSubmit = computed(() => {
-	if (!canAddAssessments()) return false
-	return (
-		(releaseMode.value === 'Principal Approval Required' ||
-			releaseMode.value === 'Teacher Choice') &&
-		((unreleasedSummary.data?.draft_count ?? 0) > 0 ||
-			(unreleasedSummary.data?.rejected_count ?? 0) > 0)
-	)
-})
+const canTeacherPublish = computed(() => batchActions.value.canPublish)
+const canTeacherSubmit = computed(() => batchActions.value.canSubmit)
+const canPrincipalApprove = computed(() => batchActions.value.canApprove)
+const canPrincipalReject = computed(() => batchActions.value.canReject)
 
 function confirmPublishAll() {
 	if ($dialog) {

@@ -18,9 +18,17 @@
 			<div v-if="pendingCourses.loading" class="text-ink-gray-5">{{ __('Loading...') }}</div>
 			<div v-else-if="!pendingCourses.data?.length" class="text-ink-gray-5">{{ __('No courses pending approval.') }}</div>
 			<div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-				<div v-for="course in pendingCourses.data" :key="course.name" class="p-5 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow">
-					<h3 class="text-lg font-medium">{{ course.title }}</h3>
-					<p class="text-sm text-ink-gray-5 mt-1">{{ __('Instructor') }}: {{ course.owner }}</p>
+				<div v-for="course in pendingCourses.data" :key="course.name" class="p-5 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+					<div>
+						<router-link
+							:to="{ name: 'CourseDetail', params: { courseName: course.name } }"
+							class="text-lg font-medium text-ink-gray-9 hover:text-blue-600 hover:underline inline-flex items-center gap-1"
+						>
+							<span>{{ course.title }}</span>
+							<span class="lucide-external-link size-3 text-ink-gray-5" />
+						</router-link>
+						<p class="text-sm text-ink-gray-5 mt-1">{{ __('Instructor') }}: {{ course.owner }}</p>
+					</div>
 					<div class="flex gap-2 mt-4">
 						<Button variant="solid" theme="blue" @click="handleAction('LMS Course', course.name, 'Approve')">
 							{{ __('Approve & Publish') }}
@@ -38,9 +46,17 @@
 			<div v-if="pendingBatches.loading" class="text-ink-gray-5">{{ __('Loading...') }}</div>
 			<div v-else-if="!pendingBatches.data?.length" class="text-ink-gray-5">{{ __('No batches pending approval.') }}</div>
 			<div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-				<div v-for="batch in pendingBatches.data" :key="batch.name" class="p-5 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow">
-					<h3 class="text-lg font-medium">{{ batch.title }}</h3>
-					<p class="text-sm text-ink-gray-5 mt-1">{{ __('Start Date') }}: {{ batch.start_date }}</p>
+				<div v-for="batch in pendingBatches.data" :key="batch.name" class="p-5 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+					<div>
+						<router-link
+							:to="{ name: 'BatchDetail', params: { batchName: batch.name } }"
+							class="text-lg font-medium text-ink-gray-9 hover:text-blue-600 hover:underline inline-flex items-center gap-1"
+						>
+							<span>{{ batch.title }}</span>
+							<span class="lucide-external-link size-3 text-ink-gray-5" />
+						</router-link>
+						<p class="text-sm text-ink-gray-5 mt-1">{{ __('Start Date') }}: {{ batch.start_date }}</p>
+					</div>
 					<div class="flex gap-2 mt-4">
 						<Button variant="solid" theme="blue" @click="handleAction('LMS Batch', batch.name, 'Approve')">
 							{{ __('Approve & Publish') }}
@@ -130,7 +146,7 @@
 							</h3>
 
 							<div class="mt-3 space-y-1 text-xs text-ink-gray-6">
-								<div v-if="item.course_title" class="flex items-center gap-1.5 truncate">
+								<div v-if="item.course_title && item.content_type !== 'Course'" class="flex items-center gap-1.5 truncate">
 									<span class="font-medium text-ink-gray-7">{{ __('Course:') }}</span>
 									<router-link
 										:to="{ name: 'CourseDetail', params: { courseName: item.course } }"
@@ -143,7 +159,7 @@
 									<span class="font-medium text-ink-gray-7">{{ __('Chapter:') }}</span>
 									<span class="truncate">{{ item.chapter_title }}</span>
 								</div>
-								<div v-if="item.batch_title" class="flex items-center gap-1.5 truncate">
+								<div v-if="item.batch_title && item.content_type !== 'Batch'" class="flex items-center gap-1.5 truncate">
 									<span class="font-medium text-ink-gray-7">{{ __('Batch:') }}</span>
 									<router-link
 										:to="{ name: 'BatchDetail', params: { batchName: item.batch } }"
@@ -159,36 +175,40 @@
 							</div>
 						</div>
 
-						<div class="pt-3 border-t border-outline-gray-1 flex items-center justify-between gap-2">
-							<router-link
-								v-if="getItemLink(item)"
-								:to="getItemLink(item)"
-								target="_blank"
-								class="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1"
-							>
-								<span>{{ __('Preview Content') }}</span>
-								<span class="lucide-external-link size-3" />
-							</router-link>
-							<div v-else />
+						<div class="pt-3 border-t border-outline-gray-1 flex flex-col gap-2.5">
+							<div class="flex items-center justify-between gap-2">
+								<router-link
+									v-if="getItemLink(item)"
+									v-external
+									:to="getItemLink(item)"
+									class="text-xs font-medium text-blue-600 hover:underline flex items-center gap-1"
+								>
+									<span>{{ __('Preview Content') }}</span>
+									<span class="lucide-external-link size-3" />
+								</router-link>
+								<div v-else />
+							</div>
 
-							<div class="flex items-center gap-2">
+							<div class="grid grid-cols-2 gap-2 w-full">
 								<Button
 									variant="solid"
 									theme="green"
 									size="sm"
+									class="w-full justify-center text-xs whitespace-nowrap"
 									:loading="isSubmitting"
 									@click="handleAction(item.doctype, item.name, 'Approve')"
 								>
-									{{ __('Approve and Publish') }}
+									{{ __('Approve & Publish') }}
 								</Button>
 								<Button
 									variant="outline"
 									theme="red"
 									size="sm"
+									class="w-full justify-center text-xs whitespace-nowrap"
 									:loading="isSubmitting"
 									@click="openRejectModal(item.doctype, item.name)"
 								>
-									{{ __('Reject / Request Changes') }}
+									{{ __('Reject / Changes') }}
 								</Button>
 							</div>
 						</div>
@@ -315,6 +335,10 @@ const getContentTypeBadgeTheme = (type) => {
 			return 'orange'
 		case 'Assessment':
 			return 'teal'
+		case 'Course':
+			return 'cyan'
+		case 'Batch':
+			return 'amber'
 		default:
 			return 'gray'
 	}
@@ -327,14 +351,32 @@ const formatDate = (dateStr) => {
 }
 
 const getItemLink = (item) => {
-	if (item.doctype === 'Course Lesson' && item.course) {
-		return { name: 'CourseDetail', params: { courseName: item.course } }
+	if (item.doctype === 'LMS Course') {
+		return { name: 'CourseDetail', params: { courseName: item.name } }
+	}
+	if (item.doctype === 'LMS Batch') {
+		return { name: 'BatchDetail', params: { batchName: item.name } }
+	}
+	if (item.doctype === 'Course Lesson') {
+		if (item.course && item.chapter_number && item.lesson_number) {
+			return {
+				name: 'Lesson',
+				params: {
+					courseName: item.course,
+					chapterNumber: String(item.chapter_number),
+					lessonNumber: String(item.lesson_number),
+				},
+			}
+		}
+		if (item.course) {
+			return { name: 'CourseDetail', params: { courseName: item.course } }
+		}
 	}
 	if (item.doctype === 'Course Chapter' && item.course) {
 		return { name: 'CourseDetail', params: { courseName: item.course } }
 	}
 	if (item.doctype === 'LMS Quiz') {
-		return { name: 'QuizForm', params: { quizID: item.name } }
+		return { name: 'QuizPage', params: { quizID: item.name } }
 	}
 	if (item.doctype === 'LMS Assessment' && item.batch) {
 		return { name: 'BatchDetail', params: { batchName: item.batch } }
