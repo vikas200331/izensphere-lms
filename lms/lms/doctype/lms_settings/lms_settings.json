@@ -87,7 +87,22 @@
 		"column_break_gcgv",
 		"contact_us_url",
 		"jobs_tab",
-		"allow_job_posting"
+		"allow_job_posting",
+		"ai_assessment_tab",
+		"enable_ai_assessment",
+		"ai_provider",
+		"ollama_base_url",
+		"ollama_model",
+		"openai_api_key",
+		"openai_model",
+		"openai_base_url",
+		"ai_temperature",
+		"ai_max_tokens",
+		"column_break_ai_set_1",
+		"school_name",
+		"school_logo",
+		"max_questions_per_request",
+		"default_generation_mode"
 	],
 	"fields": [
 		{
@@ -546,6 +561,96 @@
 			"fieldname": "enforce_assignment_completion",
 			"fieldtype": "Check",
 			"label": "Enforce Assignment Completion"
+		},
+		{
+			"fieldname": "ai_assessment_tab",
+			"fieldtype": "Tab Break",
+			"label": "AI Assessment"
+		},
+		{
+			"default": "1",
+			"fieldname": "enable_ai_assessment",
+			"fieldtype": "Check",
+			"label": "Enable AI Assessment"
+		},
+		{
+			"default": "Ollama",
+			"fieldname": "ai_provider",
+			"fieldtype": "Select",
+			"label": "AI Provider",
+			"options": "Ollama\nOpenAI"
+		},
+		{
+			"default": "http://localhost:11434",
+			"fieldname": "ollama_base_url",
+			"fieldtype": "Data",
+			"label": "Ollama Base URL",
+			"description": "Default: http://localhost:11434"
+		},
+		{
+			"default": "llama3.2",
+			"fieldname": "ollama_model",
+			"fieldtype": "Data",
+			"label": "Ollama Model",
+			"description": "e.g. llama3.2, llama3, qwen2.5, mistral"
+		},
+		{
+			"fieldname": "openai_api_key",
+			"fieldtype": "Password",
+			"label": "OpenAI API Key"
+		},
+		{
+			"default": "gpt-4o-mini",
+			"fieldname": "openai_model",
+			"fieldtype": "Select",
+			"label": "OpenAI Model",
+			"options": "gpt-4o-mini\ngpt-4o\ngpt-4-turbo\no3-mini\no1"
+		},
+		{
+			"default": "https://api.openai.com/v1",
+			"fieldname": "openai_base_url",
+			"fieldtype": "Data",
+			"label": "OpenAI Base URL"
+		},
+		{
+			"default": "0.7",
+			"fieldname": "ai_temperature",
+			"fieldtype": "Float",
+			"label": "Temperature"
+		},
+		{
+			"default": "4000",
+			"fieldname": "ai_max_tokens",
+			"fieldtype": "Int",
+			"label": "Max Output Tokens"
+		},
+		{
+			"fieldname": "column_break_ai_set_1",
+			"fieldtype": "Column Break"
+		},
+		{
+			"default": "Izensphere International School",
+			"fieldname": "school_name",
+			"fieldtype": "Data",
+			"label": "School Name"
+		},
+		{
+			"fieldname": "school_logo",
+			"fieldtype": "Attach Image",
+			"label": "School Logo"
+		},
+		{
+			"default": "50",
+			"fieldname": "max_questions_per_request",
+			"fieldtype": "Int",
+			"label": "Max Questions Per Request"
+		},
+		{
+			"default": "Chapter-Based",
+			"fieldname": "default_generation_mode",
+			"fieldtype": "Select",
+			"label": "Default Generation Mode",
+			"options": "Chapter-Based\nExtended Knowledge"
 		}
 	],
 	"grid_page_length": 50,

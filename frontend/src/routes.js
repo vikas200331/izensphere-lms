@@ -267,6 +267,37 @@ export const routes = [
 		props: true,
 	},
 	{
+		path: '/ai-assessment/quiz-generator',
+		name: 'AIQuizGenerator',
+		component: () => import('@/pages/AI/AIQuizGeneratorPage.vue'),
+	},
+	{
+		path: '/ai-assessment/question-paper',
+		name: 'AIQuestionPaperGenerator',
+		component: () => import('@/pages/AI/AIQuestionPaperGenerator.vue'),
+	},
+	{
+		path: '/ai-assessment/question-bank',
+		name: 'AIQuestionBank',
+		component: () => import('@/pages/AI/AIQuestionBank.vue'),
+	},
+	{
+		path: '/ai-assessment/history',
+		name: 'AIGenerationHistory',
+		component: () => import('@/pages/AI/AIGenerationHistory.vue'),
+	},
+	{
+		path: '/ai-assessment/analytics/:quizID',
+		name: 'AIQuizAnalytics',
+		component: () => import('@/pages/AI/AIQuizAnalytics.vue'),
+		props: true,
+	},
+	{
+		path: '/ai-assessment/settings',
+		name: 'AIProviderSettings',
+		component: () => import('@/pages/AI/AIProviderSettings.vue'),
+	},
+	{
 		path: '/programs',
 		name: 'Programs',
 		component: () => import('@/pages/Programs/Programs.vue'),

@@ -1,0 +1,102 @@
+{
+ "actions": [],
+ "creation": "2026-11-06 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_name",
+  "title",
+  "question_type",
+  "column_break_1",
+  "marks_per_question",
+  "questions_count",
+  "total_marks",
+  "section_break_instr",
+  "instructions",
+  "section_break_data",
+  "questions_data"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Section Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Section Title"
+  },
+  {
+   "default": "MCQ",
+   "fieldname": "question_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Question Type",
+   "options": "MCQ\nFill in the Blanks\nTrue/False\nShort Answer\nLong Answer\nCase Study / Assertion-Reason\nApplication-Based\nDescriptive Questions\nMixed"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "marks_per_question",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Marks Per Question"
+  },
+  {
+   "default": "0",
+   "fieldname": "questions_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Questions Count"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_marks",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total Marks"
+  },
+  {
+   "fieldname": "section_break_instr",
+   "fieldtype": "Section Break",
+   "label": "Instructions"
+  },
+  {
+   "fieldname": "instructions",
+   "fieldtype": "Small Text",
+   "label": "Section Instructions"
+  },
+  {
+   "fieldname": "section_break_data",
+   "fieldtype": "Section Break",
+   "label": "Questions JSON Data"
+  },
+  {
+   "fieldname": "questions_data",
+   "fieldtype": "Long Text",
+   "label": "Questions Data (JSON)"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-06 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "LMS",
+ "name": "AI Question Paper Section",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

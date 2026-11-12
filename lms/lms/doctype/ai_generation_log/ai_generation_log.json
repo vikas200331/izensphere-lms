@@ -1,0 +1,220 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:AILOG-{YYYY}-{#####}",
+ "creation": "2026-11-06 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "generation_type",
+  "status",
+  "model",
+  "mode",
+  "column_break_1",
+  "user",
+  "reference_doctype",
+  "reference_name",
+  "section_break_ctx",
+  "course",
+  "chapter",
+  "column_break_2",
+  "lesson",
+  "section_break_tokens",
+  "prompt_tokens",
+  "completion_tokens",
+  "column_break_3",
+  "total_tokens",
+  "estimated_cost",
+  "section_break_err",
+  "error_message",
+  "section_break_payloads",
+  "request_payload",
+  "response_payload"
+ ],
+ "fields": [
+  {
+   "fieldname": "generation_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Generation Type",
+   "options": "Quiz\nQuestion Paper\nQuestion Regeneration\nAssessment Analytics",
+   "reqd": 1
+  },
+  {
+   "default": "In Progress",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Success\nFailed\nIn Progress"
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Model"
+  },
+  {
+   "default": "Chapter-Based",
+   "fieldname": "mode",
+   "fieldtype": "Select",
+   "label": "Mode",
+   "options": "Chapter-Based\nExtended Knowledge"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "User",
+   "options": "User"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Data",
+   "label": "Reference DocType"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Data",
+   "label": "Reference Name"
+  },
+  {
+   "fieldname": "section_break_ctx",
+   "fieldtype": "Section Break",
+   "label": "Context"
+  },
+  {
+   "fieldname": "course",
+   "fieldtype": "Link",
+   "label": "Course",
+   "options": "LMS Course"
+  },
+  {
+   "fieldname": "chapter",
+   "fieldtype": "Link",
+   "label": "Chapter",
+   "options": "Course Chapter"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lesson",
+   "fieldtype": "Link",
+   "label": "Lesson",
+   "options": "Course Lesson"
+  },
+  {
+   "fieldname": "section_break_tokens",
+   "fieldtype": "Section Break",
+   "label": "Tokens & Usage"
+  },
+  {
+   "default": "0",
+   "fieldname": "prompt_tokens",
+   "fieldtype": "Int",
+   "label": "Prompt Tokens"
+  },
+  {
+   "default": "0",
+   "fieldname": "completion_tokens",
+   "fieldtype": "Int",
+   "label": "Completion Tokens"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_tokens",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total Tokens"
+  },
+  {
+   "default": "0",
+   "fieldname": "estimated_cost",
+   "fieldtype": "Float",
+   "label": "Estimated Cost (USD)"
+  },
+  {
+   "fieldname": "section_break_err",
+   "fieldtype": "Section Break",
+   "label": "Errors"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message"
+  },
+  {
+   "fieldname": "section_break_payloads",
+   "fieldtype": "Section Break",
+   "label": "Payloads"
+  },
+  {
+   "fieldname": "request_payload",
+   "fieldtype": "Long Text",
+   "label": "Request Payload"
+  },
+  {
+   "fieldname": "response_payload",
+   "fieldtype": "Long Text",
+   "label": "Response Payload"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-06 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "LMS",
+ "name": "AI Generation Log",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Course Creator",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Moderator",
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Principal"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
+

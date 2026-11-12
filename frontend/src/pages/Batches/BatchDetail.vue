@@ -573,6 +573,18 @@ const batchMenu = (tab) => {
 			},
 		})
 	}
+	if (isAdmin.value) {
+		options.push({
+			label: __('Generate Model Question Paper'),
+			icon: 'lucide-file-text',
+			onClick: () => {
+				router.push({
+					name: 'AIQuestionPaperGenerator',
+					query: { batch: props.batchName },
+				})
+			},
+		})
+	}
 	if (tab?.key !== 'settings') return options
 	if (isMobile.value) {
 		options.push({

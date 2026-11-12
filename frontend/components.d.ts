@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     AddressModal: typeof import('./src/components/Settings/Transactions/AddressModal.vue')['default']
+    AIQuizModal: typeof import('./src/components/AI/AIQuizModal.vue')['default']
     AppSidebar: typeof import('./src/components/Sidebar/AppSidebar.vue')['default']
     AssessmentPlugin: typeof import('./src/components/AssessmentPlugin.vue')['default']
     Assignment: typeof import('./src/components/Assignment.vue')['default']

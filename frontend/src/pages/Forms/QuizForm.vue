@@ -188,12 +188,25 @@
 				<h2 class="text-lg-semibold text-ink-gray-9">
 					{{ __('Questions') }}
 				</h2>
-				<Button v-if="!readOnlyMode" @click="openQuestion()">
-					<template #prefix>
-						<span class="lucide-plus size-4" />
-					</template>
-					{{ __('New Question') }}
-				</Button>
+				<div class="flex items-center gap-2">
+					<Button
+						v-if="!readOnlyMode"
+						variant="subtle"
+						theme="violet"
+						@click="showAIQuizModal = true"
+					>
+						<template #prefix>
+							<span class="lucide-sparkles size-4 text-violet-600" />
+						</template>
+						{{ __('GENERATE QUIZ WITH AI') }}
+					</Button>
+					<Button v-if="!readOnlyMode" @click="openQuestion()">
+						<template #prefix>
+							<span class="lucide-plus size-4" />
+						</template>
+						{{ __('New Question') }}
+					</Button>
+				</div>
 			</div>
 			<ResponsiveListView
 				v-if="questions.length"
@@ -463,6 +476,15 @@
 		</template>
 	</Dialog>
 
+	<AIQuizModal
+		v-model="showAIQuizModal"
+		:initial-course="quizDetails.doc?.course"
+		:initial-lesson="quizDetails.doc?.lesson"
+		:quiz-name="quizDetails.doc?.name"
+		:quiz-title="quizDetails.doc?.title"
+		@quiz-saved="onAIQuizSaved"
+	/>
+
 	<router-view :key="route.params.questionName" />
 </template>
 <script setup>
@@ -513,6 +535,13 @@ import { openFormRoute } from '@/composables/useFormRoute'
 import EmptyStateLayout from '@/components/Layouts/EmptyStateLayout.vue'
 import ResponsiveListView from '@/components/ResponsiveListView.vue'
 import { resourceErrorMessage, submitResource } from '@/utils/resource'
+import AIQuizModal from '@/components/AI/AIQuizModal.vue'
+
+const showAIQuizModal = ref(false)
+
+function onAIQuizSaved(savedQuiz) {
+	quizDetails.reload()
+}
 
 const { brand } = sessionStore()
 const pageLength = ref(20)

@@ -91,6 +91,28 @@
 						{{ __('Student View') }}
 					</Button>
 				</router-link>
+				<Button
+					v-if="isAdmin"
+					variant="subtle"
+					theme="violet"
+					@click="showAIQuizModal = true"
+				>
+					<template #prefix>
+						<span class="lucide-sparkles size-4 text-violet-600" />
+					</template>
+					{{ isMobile ? __('AI Quiz') : __('Generate Quiz with AI') }}
+				</Button>
+				<Button
+					v-if="isAdmin"
+					variant="subtle"
+					theme="gray"
+					@click="goToModelPaperGenerator"
+				>
+					<template #prefix>
+						<span class="lucide-file-text size-4" />
+					</template>
+					{{ isMobile ? __('AI Paper') : __('Generate Model Question Paper') }}
+				</Button>
 			</template>
 			<Button
 				v-if="tab?.key === 'dashboard' && course.data && isMobile && !isExpired"
@@ -288,6 +310,10 @@
 		</template>
 	</TabbedDetailPage>
 	<LessonHelp v-model="showLessonHelp" />
+	<AIQuizModal
+		v-model="showAIQuizModal"
+		:initial-course="props.courseName"
+	/>
 
 	<Dialog
 		v-model="showCourseRejectModal"
@@ -359,6 +385,7 @@ import CourseDashboard from '@/pages/Courses/CourseDashboard.vue'
 import CourseEditor from '@/pages/Courses/CourseEditor.vue'
 import CourseForm from '@/pages/Courses/CourseForm.vue'
 import LessonHelp from '@/components/LessonHelp.vue'
+import AIQuizModal from '@/components/AI/AIQuizModal.vue'
 import ShortcutTooltip from '@/components/ShortcutTooltip.vue'
 import HeaderButton from '@/components/HeaderButton.vue'
 import { openFormRoute } from '@/composables/useFormRoute'
@@ -386,6 +413,14 @@ interface EditorSelection {
 
 const editorSelected = ref<EditorSelection | null>(null)
 const showLessonHelp = ref(false)
+const showAIQuizModal = ref(false)
+
+function goToModelPaperGenerator() {
+	router.push({
+		name: 'AIQuestionPaperGenerator',
+		query: { course: props.courseName },
+	})
+}
 
 type CourseMenuItem = {
 	label: string
@@ -453,9 +488,26 @@ const publishToggle = createResource({
 // label. An icon-only globe gave no hint that it publishes the course.
 const courseOptions = computed<CourseMenuItem[]>(() => {
 	const menu = courseFormRef.value?.courseMenu ?? []
-	if (!isMobile.value || !user.data?.is_principal) return menu
-	
 	const options = []
+
+	if (isAdmin.value) {
+		options.push({
+			label: __('Generate Quiz with AI'),
+			icon: 'lucide-sparkles',
+			onClick: () => {
+				showAIQuizModal.value = true
+			},
+		})
+		options.push({
+			label: __('Generate Model Question Paper'),
+			icon: 'lucide-file-text',
+			onClick: () => {
+				goToModelPaperGenerator()
+			},
+		})
+	}
+
+	if (!isMobile.value || !user.data?.is_principal) return [...options, ...menu]
 	if (course.data?.transitions?.includes('Unpublish')) {
 		options.push({
 			label: __('Unpublish course'),

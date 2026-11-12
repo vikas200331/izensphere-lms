@@ -1,0 +1,306 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:QP-{YYYY}-{#####}",
+ "creation": "2026-11-06 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "approval_status",
+  "examination_type",
+  "academic_year",
+  "class_level",
+  "subject",
+  "column_break_meta",
+  "course",
+  "total_marks",
+  "duration",
+  "examination_date",
+  "language",
+  "generation_mode",
+  "section_break_school",
+  "school_name",
+  "school_logo",
+  "section_break_diff",
+  "difficulty_easy_pct",
+  "difficulty_medium_pct",
+  "difficulty_hard_pct",
+  "section_break_instr",
+  "instructions",
+  "selected_chapters",
+  "section_break_sec",
+  "sections",
+  "section_break_workflow",
+  "created_by_teacher",
+  "reviewed_by",
+  "column_break_wf",
+  "approved_by",
+  "rejection_reason",
+  "section_break_json",
+  "paper_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Examination Title",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "approval_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Approval Status",
+   "options": "Draft\nAI Generated\nTeacher Review\nSubmitted for Approval\nPrincipal Approved\nPublished\nRejected"
+  },
+  {
+   "default": "Midterm Examination",
+   "fieldname": "examination_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Examination Type",
+   "options": "Midterm Examination\nUnit Test\nQuarterly Examination\nHalf Yearly Examination\nAnnual Examination\nFinal Examination\nPre-Board Examination\nPractice Test"
+  },
+  {
+   "default": "2026-27",
+   "fieldname": "academic_year",
+   "fieldtype": "Data",
+   "label": "Academic Year"
+  },
+  {
+   "default": "Class 10",
+   "fieldname": "class_level",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Class / Grade"
+  },
+  {
+   "default": "Science",
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Subject"
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "course",
+   "fieldtype": "Link",
+   "label": "Course",
+   "options": "LMS Course"
+  },
+  {
+   "default": "80",
+   "fieldname": "total_marks",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Total Marks",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "default": "3 Hours",
+   "fieldname": "duration",
+   "fieldtype": "Data",
+   "label": "Duration"
+  },
+  {
+   "fieldname": "examination_date",
+   "fieldtype": "Date",
+   "label": "Examination Date"
+  },
+  {
+   "default": "English",
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language"
+  },
+  {
+   "default": "Chapter-Based",
+   "fieldname": "generation_mode",
+   "fieldtype": "Select",
+   "label": "Generation Mode",
+   "options": "Chapter-Based\nExtended Knowledge"
+  },
+  {
+   "fieldname": "section_break_school",
+   "fieldtype": "Section Break",
+   "label": "School Details"
+  },
+  {
+   "default": "Izensphere International School",
+   "fieldname": "school_name",
+   "fieldtype": "Data",
+   "label": "School Name"
+  },
+  {
+   "fieldname": "school_logo",
+   "fieldtype": "Attach Image",
+   "label": "School Logo"
+  },
+  {
+   "fieldname": "section_break_diff",
+   "fieldtype": "Section Break",
+   "label": "Difficulty Distribution"
+  },
+  {
+   "default": "30",
+   "fieldname": "difficulty_easy_pct",
+   "fieldtype": "Int",
+   "label": "Easy (%)"
+  },
+  {
+   "default": "40",
+   "fieldname": "difficulty_medium_pct",
+   "fieldtype": "Int",
+   "label": "Medium (%)"
+  },
+  {
+   "default": "30",
+   "fieldname": "difficulty_hard_pct",
+   "fieldtype": "Int",
+   "label": "Hard (%)"
+  },
+  {
+   "fieldname": "section_break_instr",
+   "fieldtype": "Section Break",
+   "label": "Instructions & Chapters"
+  },
+  {
+   "fieldname": "instructions",
+   "fieldtype": "Text",
+   "label": "General Instructions"
+  },
+  {
+   "fieldname": "selected_chapters",
+   "fieldtype": "Small Text",
+   "label": "Selected Chapters"
+  },
+  {
+   "fieldname": "section_break_sec",
+   "fieldtype": "Section Break",
+   "label": "Sections"
+  },
+  {
+   "fieldname": "sections",
+   "fieldtype": "Table",
+   "label": "Sections",
+   "options": "AI Question Paper Section"
+  },
+  {
+   "fieldname": "section_break_workflow",
+   "fieldtype": "Section Break",
+   "label": "Review & Approval"
+  },
+  {
+   "fieldname": "created_by_teacher",
+   "fieldtype": "Link",
+   "label": "Created By (Teacher)",
+   "options": "User"
+  },
+  {
+   "fieldname": "reviewed_by",
+   "fieldtype": "Link",
+   "label": "Reviewed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "column_break_wf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By (Principal)",
+   "options": "User"
+  },
+  {
+   "fieldname": "rejection_reason",
+   "fieldtype": "Small Text",
+   "label": "Rejection Reason"
+  },
+  {
+   "fieldname": "section_break_json",
+   "fieldtype": "Section Break",
+   "label": "Structured Paper JSON"
+  },
+  {
+   "fieldname": "paper_json",
+   "fieldtype": "Long Text",
+   "label": "Paper JSON Data"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-06 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "LMS",
+ "name": "AI Question Paper",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Course Creator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Moderator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Principal",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "LMS Student"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}
+

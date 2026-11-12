@@ -647,6 +647,57 @@ const getSidebarItems = (forMobile = false) => {
 				},
 			],
 		},
+		{
+			label: 'AI Assessments',
+			hideLabel: false,
+			items: [
+				{
+					label: 'AI Quiz Generator',
+					icon: 'Sparkles',
+					to: 'AIQuizGenerator',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: ['AIQuizGenerator'],
+				},
+				{
+					label: 'AI Question Paper Generator',
+					icon: 'FileText',
+					to: 'AIQuestionPaperGenerator',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: ['AIQuestionPaperGenerator'],
+				},
+				{
+					label: 'AI Question Bank',
+					icon: 'Database',
+					to: 'AIQuestionBank',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: ['AIQuestionBank'],
+				},
+				{
+					label: 'AI Generation History',
+					icon: 'History',
+					to: 'AIGenerationHistory',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: ['AIGenerationHistory'],
+				},
+				{
+					label: 'AI Provider Settings',
+					icon: 'Sliders',
+					to: 'AIProviderSettings',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: ['AIProviderSettings'],
+				},
+			],
+		},
 	]
 }
 
