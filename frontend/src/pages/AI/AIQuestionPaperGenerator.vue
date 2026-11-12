@@ -771,7 +771,7 @@ async function savePaper(action = 'Draft') {
 		if (res && res.name) {
 			generatedPaper.value.name = res.name
 			generatedPaper.value.approval_status = res.approval_status
-			toast.success(__('Paper saved as {0} ({1})!').replace('{0}', res.approval_status).replace('{1}', res.name))
+			toast.success(__('Paper saved as {0} ({1})!').format(res.approval_status, res.name))
 			await loadSavedPapers()
 		}
 	} catch (e) {

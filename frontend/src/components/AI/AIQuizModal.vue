@@ -655,7 +655,7 @@ async function handleGenerate() {
 			generatedQuestions.value = res.questions
 			generationUsage.value = res.usage
 			step.value = 2
-			toast.success(__('Generated {0} questions successfully!').replace('{0}', res.questions.length))
+			toast.success(__('Generated {0} questions successfully!').format(res.questions.length))
 			if (res.warning) {
 				toast.warning(res.warning)
 			}
@@ -761,7 +761,7 @@ async function saveQuiz(action = 'Draft') {
 		})
 
 		if (res && res.quiz_name) {
-			toast.success(__('Quiz saved successfully as {0}!').replace('{0}', res.release_status))
+			toast.success(__('Quiz saved successfully as {0}!').format(res.release_status))
 			isOpen.value = false
 			emit('quizSaved', res)
 		}
