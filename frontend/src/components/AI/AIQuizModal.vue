@@ -453,7 +453,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { Dialog, Button, Badge, toast, call } from 'frappe-ui'
 
 const props = defineProps({
@@ -502,6 +502,35 @@ const generatedQuestions = ref([])
 const calculatedTotalMarks = computed(() => {
 	return generatedQuestions.value.reduce((sum, q) => sum + (Number(q.marks) || 1), 0)
 })
+
+watch(
+	() => props.modelValue,
+	async (newVal) => {
+		if (newVal) {
+			if (props.initialCourse) form.course = props.initialCourse
+			if (props.initialChapter) form.chapter = props.initialChapter
+			if (props.initialLesson) form.lesson = props.initialLesson
+			if (form.course) {
+				await loadChapters(form.course)
+			}
+			if (form.chapter) {
+				await loadLessons(form.chapter)
+			}
+			checkContentPreview()
+		}
+	}
+)
+
+watch(
+	() => props.initialCourse,
+	async (newCourse) => {
+		if (newCourse && newCourse !== form.course) {
+			form.course = newCourse
+			await loadChapters(newCourse)
+			checkContentPreview()
+		}
+	}
+)
 
 onMounted(async () => {
 	await loadCourses()

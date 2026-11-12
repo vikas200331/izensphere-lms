@@ -540,7 +540,14 @@ import AIQuizModal from '@/components/AI/AIQuizModal.vue'
 const showAIQuizModal = ref(false)
 
 function onAIQuizSaved(savedQuiz) {
-	quizDetails.reload()
+	if (savedQuiz?.quiz_name && props.quizID === 'new') {
+		router.replace({
+			name: 'QuizForm',
+			params: { quizID: savedQuiz.quiz_name },
+		})
+	} else {
+		quizDetails.reload()
+	}
 }
 
 const { brand } = sessionStore()

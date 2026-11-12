@@ -327,8 +327,17 @@ def save_ai_quiz_to_database(
 		# Frappe LMS requires quizzes with Open Ended to ONLY contain Open Ended questions
 		if has_open_ended and has_objective and q_type == "Open Ended":
 			q_type = "User Input"
-			if not q.get("possibilities") and q.get("correct_answer"):
-				q["possibilities"] = [str(q.get("correct_answer"))]
+			if not q.get("possibilities"):
+				if q.get("correct_answer"):
+					if isinstance(q["correct_answer"], list):
+						q["possibilities"] = [str(x) for x in q["correct_answer"] if x]
+					else:
+						q["possibilities"] = [str(q["correct_answer"])]
+				elif q.get("explanation"):
+					clean_exp = q.get("explanation").replace("Evaluation Rubric:", "").strip()
+					q["possibilities"] = [clean_exp[:140] if clean_exp else "Descriptive Answer"]
+				else:
+					q["possibilities"] = ["Descriptive Answer"]
 
 		# If already linked to an existing LMS Question, update it
 		if q_doc_name and frappe.db.exists("LMS Question", q_doc_name):
@@ -354,10 +363,31 @@ def save_ai_quiz_to_database(
 
 		# Populate options
 		if q_type == "Choices":
-			options = q.get("options", [])
+			options = q.get("options", []) or []
+			# Remove empty options and deduplicate while preserving order
+			seen_opts = set()
+			clean_options = []
+			for opt in options:
+				opt_str = str(opt).strip()
+				if opt_str and opt_str not in seen_opts:
+					seen_opts.add(opt_str)
+					clean_options.append(opt_str)
+
+			# Ensure minimum 2 options
+			if len(clean_options) < 2:
+				if len(clean_options) == 1:
+					clean_options.append("None of the above")
+				else:
+					clean_options = ["True", "False"]
+
 			correct_answer = q.get("correct_answer")
 			is_multi = isinstance(correct_answer, list) and len(correct_answer) > 1
 			q_doc.multiple = 1 if is_multi else 0
+
+			if is_multi:
+				correct_list = [str(x).strip() for x in correct_answer if str(x).strip()]
+			else:
+				correct_list = [str(correct_answer).strip()] if correct_answer else [clean_options[0]]
 
 			# Clear existing options
 			for i in range(1, 11):
@@ -365,25 +395,34 @@ def save_ai_quiz_to_database(
 				setattr(q_doc, f"is_correct_{i}", 0)
 				setattr(q_doc, f"explanation_{i}", None)
 
-			for i, opt in enumerate(options[:10], 1):
+			for i, opt in enumerate(clean_options[:10], 1):
 				setattr(q_doc, f"option_{i}", opt)
-				if is_multi:
-					is_corr = 1 if opt in correct_answer else 0
-				else:
-					is_corr = 1 if opt == correct_answer else 0
+				is_corr = 1 if opt in correct_list else 0
 				setattr(q_doc, f"is_correct_{i}", is_corr)
 				if is_corr:
 					setattr(q_doc, f"explanation_{i}", q.get("explanation", ""))
 
+			# Guarantee at least option_1 is marked correct if none matched
+			if not any(getattr(q_doc, f"is_correct_{i}") for i in range(1, 11)):
+				q_doc.is_correct_1 = 1
+
 		elif q_type == "User Input":
-			possibilities = q.get("possibilities", [])
+			possibilities = q.get("possibilities") or []
 			if not possibilities and q.get("correct_answer"):
-				possibilities = [str(q.get("correct_answer"))]
+				if isinstance(q.get("correct_answer"), list):
+					possibilities = [str(x) for x in q.get("correct_answer") if x]
+				else:
+					possibilities = [str(q.get("correct_answer"))]
+
+			clean_possibilities = [str(p).strip() for p in possibilities if p and str(p).strip()]
+			if not clean_possibilities:
+				clean_exp = (q.get("explanation") or "").replace("Evaluation Rubric:", "").strip()
+				clean_possibilities = [clean_exp[:140] if clean_exp else "Answer"]
 
 			for i in range(1, 11):
 				setattr(q_doc, f"possibility_{i}", None)
 
-			for i, pos in enumerate(possibilities[:10], 1):
+			for i, pos in enumerate(clean_possibilities[:10], 1):
 				setattr(q_doc, f"possibility_{i}", pos)
 
 		q_doc.save(ignore_permissions=True)
