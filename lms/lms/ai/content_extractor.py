@@ -337,6 +337,121 @@ def extract_course_content(course_name: str, selected_chapters: list[str] | None
 	}
 
 
+def extract_batch_content(
+	batch_name: str,
+	course_name: str | None = None,
+	selected_chapters: list[str] | None = None,
+) -> dict:
+	"""Extract rich educational material combining Batch details, schedule, live classes,
+	and linked Course chapters and lessons.
+	"""
+	if not frappe.db.exists("LMS Batch", batch_name):
+		return {"title": batch_name, "content": "", "insufficient": True}
+
+	batch = frappe.get_doc("LMS Batch", batch_name)
+	sections = [f"# Batch: {batch.title}"]
+
+	# 1. Batch metadata & schedule
+	meta_parts = []
+	if batch.category:
+		meta_parts.append(f"**Category:** {batch.category}")
+	if batch.medium:
+		meta_parts.append(f"**Medium:** {batch.medium}")
+	if batch.start_date:
+		date_str = f"{batch.start_date}"
+		if batch.end_date:
+			date_str += f" to {batch.end_date}"
+		if batch.start_time:
+			date_str += f" ({batch.start_time}"
+			if batch.end_time:
+				date_str += f" - {batch.end_time}"
+			if batch.timezone:
+				date_str += f" {batch.timezone}"
+			date_str += ")"
+		meta_parts.append(f"**Batch Schedule:** {date_str}")
+
+	if meta_parts:
+		sections.append("## Batch Information\n" + "\n".join(meta_parts))
+
+	# 2. Batch Description & Detailed Curriculum / Syllabus
+	if batch.description:
+		sections.append(f"## Batch Overview\n{clean_html(batch.description)}")
+
+	if batch.batch_details:
+		parsed_details = parse_editorjs_json(batch.batch_details)
+		if not parsed_details:
+			parsed_details = clean_html(batch.batch_details)
+		if parsed_details:
+			sections.append(f"## Batch Syllabus & Topics Covered\n{parsed_details}")
+	elif batch.batch_details_raw:
+		sections.append(f"## Batch Topics\n{clean_html(batch.batch_details_raw)}")
+
+	# 3. Batch Live Classes & Interactive Sessions
+	live_classes = frappe.get_all(
+		"LMS Live Class",
+		filters={"batch_name": batch.name},
+		fields=["title", "description", "date", "time"],
+		order_by="date asc, time asc",
+	)
+	if live_classes:
+		lc_sections = ["## Batch Live Classes & Interactive Sessions"]
+		for lc in live_classes:
+			lc_title = lc.get("title", "")
+			lc_desc = clean_html(lc.get("description", ""))
+			lc_line = f"- **{lc_title}**"
+			if lc.get("date"):
+				lc_line += f" ({lc.get('date')})"
+			if lc_desc:
+				lc_line += f": {lc_desc}"
+			lc_sections.append(lc_line)
+		sections.append("\n".join(lc_sections))
+
+	# 4. Batch Timetable
+	if hasattr(batch, "timetable") and batch.timetable:
+		tt_lines = []
+		for t in batch.timetable:
+			if t.reference_docname or t.milestone:
+				tt_lines.append(f"- Day {t.day}: {t.reference_docname or 'Milestone Session'} ({t.duration or '1 hr'})")
+		if tt_lines:
+			sections.append("## Batch Timetable & Progression\n" + "\n".join(tt_lines))
+
+	# 5. Extract Linked Course Content
+	batch_courses = []
+	if hasattr(batch, "courses") and batch.courses:
+		batch_courses = [c.course for c in batch.courses if c.course]
+
+	target_courses = []
+	if course_name:
+		target_courses = [course_name]
+	elif batch_courses:
+		target_courses = batch_courses
+
+	course_data = []
+	for c_name in target_courses:
+		if frappe.db.exists("LMS Course", c_name):
+			c_res = extract_course_content(c_name, selected_chapters=selected_chapters)
+			course_data.append(c_res)
+			if c_res.get("content"):
+				sections.append(f"## Course Curriculum: {c_res.get('title', c_name)}\n" + c_res["content"])
+
+	full_text = "\n\n".join(sections).strip()
+	stats = get_content_stats(full_text)
+
+	return {
+		"name": batch.name,
+		"title": batch.title,
+		"category": batch.category,
+		"description": batch.description,
+		"batch_courses": batch_courses,
+		"courses": course_data,
+		"live_classes_count": len(live_classes),
+		"content": full_text,
+		"stats": stats,
+		"insufficient": stats["is_insufficient"],
+		"warning": stats["warning"],
+	}
+
+
 def get_content_stats(text: str) -> dict:
 	"""Computes text metrics and verifies if content meets minimum threshold (> 100 characters)."""
 	char_count = len(text)

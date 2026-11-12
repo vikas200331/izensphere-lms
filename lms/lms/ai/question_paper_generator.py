@@ -7,6 +7,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, flt, now_datetime
 from lms.lms.ai.content_extractor import (
+	extract_batch_content,
 	extract_chapter_content,
 	extract_course_content,
 	get_content_stats,
@@ -89,6 +90,7 @@ def generate_question_paper(
 	subject: str = "Science",
 	examination_type: str = "Midterm Examination",
 	course: str | None = None,
+	batch: str | None = None,
 	selected_chapters: list[str] | None = None,
 	total_marks: int = 80,
 	duration: str = "3 Hours",
@@ -99,17 +101,38 @@ def generate_question_paper(
 	mode: str = "Chapter-Based",
 ) -> dict:
 	"""Generates a complete formal examination question paper with sections, internal choices,
-	answer key, and detailed solutions.
+	answer key, and detailed solutions based on selected Course and Batch content.
 	"""
 	total_target_marks = cint(total_marks) or 80
 
 	if not difficulty_distribution:
 		difficulty_distribution = {"easy": 30, "medium": 40, "hard": 30}
 
-	# Extract content from all selected chapters
+	# Extract content from Batch and/or selected Course Chapters
 	all_content_texts = []
 	chapter_names = []
-	if selected_chapters:
+	batch_title = None
+
+	if batch:
+		batch_res = extract_batch_content(batch, course_name=course, selected_chapters=selected_chapters)
+		batch_title = batch_res.get("title", batch)
+		if batch_res.get("content"):
+			all_content_texts.append(batch_res["content"])
+		# If course is not set, pick the first course from batch if available
+		if not course and batch_res.get("courses"):
+			course = batch_res["courses"][0].get("name")
+		# Collect chapter names from extracted batch courses
+		for c_info in batch_res.get("courses", []):
+			for ch in c_info.get("chapters", []):
+				ch_t = ch.get("title") or ch.get("name")
+				if ch_t and ch_t not in chapter_names:
+					chapter_names.append(ch_t)
+		# Auto-adjust class_level and subject if default placeholders were used
+		if (class_level == "Class 10" or not class_level) and batch_title:
+			class_level = batch_title
+		if (subject == "Science" or not subject) and batch_res.get("category"):
+			subject = batch_res["category"]
+	elif selected_chapters:
 		for ch_name in selected_chapters:
 			ch_res = extract_chapter_content(ch_name)
 			chapter_names.append(ch_res.get("title", ch_name))
@@ -119,6 +142,8 @@ def generate_question_paper(
 		course_res = extract_course_content(course)
 		all_content_texts.append(course_res.get("content", ""))
 		chapter_names = [ch["title"] for ch in course_res.get("chapters", [])]
+		if (subject == "Science" or not subject) and course_res.get("title"):
+			subject = course_res["title"]
 
 	combined_content = "\n\n---\n\n".join(all_content_texts).strip()
 
@@ -175,15 +200,16 @@ def generate_question_paper(
 		[f"- {s.get('name')}: {s.get('count')} questions of {s.get('marks_each')} marks each = {s.get('total')} marks ({s.get('type')})" for s in sections_config]
 	)
 
+	batch_line = f"Batch / Cohort: {batch_title}\n" if batch_title else ""
 	user_prompt = f"""Generate a complete Question Paper.
 School Name: Izensphere International School
 Academic Year: {academic_year}
 Class: {class_level}
 Subject: {subject}
-Examination Type: {examination_type}
+{batch_line}Examination Type: {examination_type}
 Duration: {duration}
 Total Marks: {total_target_marks}
-Selected Chapters: {', '.join(chapter_names)}
+Selected Scope: {', '.join(chapter_names) if chapter_names else (batch_title or 'Course Curriculum')}
 Target Difficulty: Easy {difficulty_distribution.get('easy', 30)}%, Medium {difficulty_distribution.get('medium', 40)}%, Hard {difficulty_distribution.get('hard', 30)}%
 Language: {language}
 
@@ -205,6 +231,7 @@ For 5-mark and 4-mark questions, include an alternative internal choice question
 		generation_type="Question Paper",
 		mode=mode,
 		course=course,
+		batch=batch,
 	)
 
 	# Fetch school settings
@@ -226,6 +253,9 @@ For 5-mark and 4-mark questions, include an alternative internal choice question
 	result["examination_type"] = examination_type
 	result["duration"] = duration
 	result["total_marks"] = total_target_marks
+	result["course"] = course
+	result["batch"] = batch
+	result["batch_title"] = batch_title
 	result["selected_chapters"] = selected_chapters or []
 	result["warning"] = warning
 
@@ -356,6 +386,7 @@ def save_ai_question_paper(paper_data: dict, action: str = "Draft") -> dict:
 	doc.academic_year = paper_data.get("academic_year", "2026-27")
 	doc.class_level = paper_data.get("class_level", "Class 10")
 	doc.subject = paper_data.get("subject", "Science")
+	doc.batch = paper_data.get("batch")
 	doc.course = paper_data.get("course")
 	doc.examination_type = paper_data.get("examination_type", "Midterm Examination")
 	doc.examination_date = paper_data.get("examination_date")

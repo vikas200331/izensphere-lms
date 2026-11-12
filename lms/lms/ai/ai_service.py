@@ -116,6 +116,7 @@ def log_generation(
 	course: str | None = None,
 	chapter: str | None = None,
 	lesson: str | None = None,
+	batch: str | None = None,
 	reference_doctype: str | None = None,
 	reference_name: str | None = None,
 	error_message: str | None = None,
@@ -258,6 +259,7 @@ def call_ai_service(
 	course: str | None = None,
 	chapter: str | None = None,
 	lesson: str | None = None,
+	batch: str | None = None,
 	reference_doctype: str | None = None,
 	reference_name: str | None = None,
 ) -> dict:
@@ -364,6 +366,7 @@ def call_ai_service(
 			course=course,
 			chapter=chapter,
 			lesson=lesson,
+			batch=batch,
 			provider_info=f"Ollama ({model_name} offline fallback)",
 		)
 
@@ -385,6 +388,7 @@ def call_ai_service(
 				course=course,
 				chapter=chapter,
 				lesson=lesson,
+				batch=batch,
 				provider_info=f"OpenAI ({model_name} offline fallback)",
 			)
 
@@ -472,6 +476,7 @@ def call_ai_service(
 				course=course,
 				chapter=chapter,
 				lesson=lesson,
+				batch=batch,
 				provider_info=f"OpenAI fallback ({model_name})",
 			)
 
@@ -484,6 +489,7 @@ def call_ai_service(
 		course=course,
 		chapter=chapter,
 		lesson=lesson,
+		batch=batch,
 	)
 
 
@@ -492,9 +498,10 @@ def fallback_offline_engine(
 	user_prompt: str,
 	generation_type: str,
 	mode: str,
-	course: str | None,
-	chapter: str | None,
-	lesson: str | None,
+	course: str | None = None,
+	chapter: str | None = None,
+	lesson: str | None = None,
+	batch: str | None = None,
 	provider_info: str = "Offline Content Engine",
 ) -> dict:
 	"""High-fidelity content-driven fallback engine that generates authentic curriculum assessment questions
@@ -904,6 +911,7 @@ def fallback_offline_engine(
 		course=course,
 		chapter=chapter,
 		lesson=lesson,
+		batch=batch,
 	)
 
 	result["_usage"] = {

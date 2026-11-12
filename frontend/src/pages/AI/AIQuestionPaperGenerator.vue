@@ -196,23 +196,68 @@
 						</div>
 					</div>
 
-					<!-- Course & Chapter Selection -->
-					<div class="space-y-2">
-						<label class="block text-xs font-medium text-ink-gray-7">{{ __('Select Source Course') }}</label>
-						<select
-							v-model="form.course"
-							class="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm dark:bg-gray-800 dark:border-gray-700"
-							@change="onCourseSelect"
-						>
-							<option value="">{{ __('-- Select Course --') }}</option>
-							<option v-for="c in coursesList" :key="c.name" :value="c.name">
-								{{ c.title || c.name }}
-							</option>
-						</select>
+					<!-- Batch & Course Curriculum Selection -->
+					<div class="space-y-4 rounded-lg border p-3.5 bg-gray-50/50 dark:bg-gray-900/50">
+						<div class="flex items-center justify-between">
+							<label class="block text-xs font-semibold text-ink-gray-7 uppercase tracking-wider">
+								{{ __('Curriculum Scope: Batch & Course Content') }}
+							</label>
+							<span class="text-[11px] text-violet-700 font-medium">
+								{{ __('Extracts batch schedule, live classes, lessons & notes') }}
+							</span>
+						</div>
+
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+							<!-- Batch Selection -->
+							<div>
+								<label class="block text-xs font-medium text-ink-gray-7 mb-1">
+									{{ __('Select Batch / Cohort') }}
+									<span class="text-xs text-ink-gray-5 font-normal">({{ __('Optional') }})</span>
+								</label>
+								<select
+									v-model="form.batch"
+									class="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm dark:bg-gray-800 dark:border-gray-700"
+									@change="onBatchSelect"
+								>
+									<option value="">{{ __('-- Direct Course Examination (No Batch) --') }}</option>
+									<option v-for="b in batchesList" :key="b.name" :value="b.name">
+										{{ b.title || b.name }} {{ b.category ? `(${b.category})` : '' }}
+									</option>
+								</select>
+							</div>
+
+							<!-- Course Selection -->
+							<div>
+								<label class="block text-xs font-medium text-ink-gray-7 mb-1">
+									{{ __('Select Course') }} *
+								</label>
+								<select
+									v-model="form.course"
+									class="w-full rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm dark:bg-gray-800 dark:border-gray-700"
+									@change="onCourseSelect"
+								>
+									<option value="">{{ __('-- Select Course --') }}</option>
+									<option
+										v-for="c in (batchCoursesList.length ? batchCoursesList : coursesList)"
+										:key="c.course || c.name"
+										:value="c.course || c.name"
+									>
+										{{ c.title || c.name }}
+									</option>
+								</select>
+							</div>
+						</div>
 
 						<!-- Chapters Checklist -->
-						<div v-if="chaptersList.length" class="mt-2 space-y-1">
-							<label class="block text-xs font-medium text-ink-gray-7">{{ __('Select Chapters to Include:') }}</label>
+						<div v-if="chaptersList.length" class="space-y-1 pt-1">
+							<div class="flex items-center justify-between text-xs text-ink-gray-7">
+								<span class="font-medium">{{ __('Select Chapters to Include:') }}</span>
+								<div class="flex gap-2 text-[11px]">
+									<button type="button" class="text-violet-600 hover:underline" @click="selectAllChapters">{{ __('Select All') }}</button>
+									<span class="text-gray-300">|</span>
+									<button type="button" class="text-gray-500 hover:underline" @click="clearChapters">{{ __('Clear') }}</button>
+								</div>
+							</div>
 							<div class="max-h-36 overflow-y-auto rounded-lg border p-2 space-y-1 bg-white dark:bg-gray-800">
 								<label
 									v-for="ch in chaptersList"
@@ -224,10 +269,23 @@
 										v-model="form.selected_chapters"
 										:value="ch.name"
 										class="rounded text-violet-600"
+										@change="updateContentPreview"
 									/>
 									<span>{{ ch.title || ch.name }}</span>
 								</label>
 							</div>
+						</div>
+
+						<!-- Live Educational Content Metrics Indicator -->
+						<div v-if="contentStats" class="rounded-md border border-emerald-200 bg-emerald-50/60 p-2.5 text-xs text-emerald-900 flex items-center justify-between">
+							<div class="flex items-center gap-2">
+								<span class="lucide-check-circle size-4 text-emerald-600"></span>
+								<div>
+									<span class="font-semibold">{{ __('Content Ready:') }}</span>
+									<span class="ml-1">{{ contentStats.word_count }} {{ __('words') }} ({{ contentStats.char_count }} {{ __('characters') }}, ~{{ contentStats.estimated_tokens }} {{ __('tokens') }})</span>
+								</div>
+							</div>
+							<Badge variant="subtle" theme="green">{{ form.batch ? __('Batch + Course Content') : __('Course Content') }}</Badge>
 						</div>
 					</div>
 
@@ -542,7 +600,10 @@
 					>
 						<div class="flex items-start justify-between gap-2">
 							<div>
-								<div class="text-xs font-bold text-violet-700 uppercase">{{ p.subject }} &bull; {{ p.class_level }}</div>
+								<div class="flex items-center gap-1.5 flex-wrap">
+									<span class="text-xs font-bold text-violet-700 uppercase">{{ p.subject }} &bull; {{ p.class_level }}</span>
+									<Badge v-if="p.batch" variant="outline" theme="purple" size="sm">{{ p.batch }}</Badge>
+								</div>
 								<h3 class="font-bold text-ink-gray-9 text-sm line-clamp-1 mt-0.5">{{ p.title }}</h3>
 							</div>
 							<Badge
@@ -597,15 +658,20 @@ const downloading = ref(false)
 const loadingSaved = ref(false)
 
 const coursesList = ref([])
+const batchesList = ref([])
+const batchCoursesList = ref([])
 const chaptersList = ref([])
 const savedPapersList = ref([])
 const generatedPaper = ref(null)
+const contentStats = ref(null)
+const loadingContent = ref(false)
 
 const form = reactive({
 	academic_year: '2026-27',
 	class_level: 'Class 10',
 	subject: 'Science',
 	examination_type: 'Midterm Examination',
+	batch: '',
 	course: '',
 	selected_chapters: [],
 	total_marks: 80,
@@ -637,26 +703,31 @@ const calculatedBlueprintTotal = computed(() => {
 })
 
 onMounted(async () => {
+	await loadBatches()
 	await loadCourses()
 	await loadSavedPapers()
-	if (route.query.course) {
+	if (route.query.batch) {
+		form.batch = route.query.batch
+		await onBatchSelect()
+	} else if (route.query.course) {
 		form.course = route.query.course
 		await onCourseSelect()
-	} else if (route.query.batch) {
-		try {
-			const b = await call('frappe.client.get', { doctype: 'LMS Batch', name: route.query.batch })
-			if (b) {
-				form.class_level = b.title || form.class_level
-				if (b.courses && b.courses.length > 0) {
-					form.course = b.courses[0].course
-					await onCourseSelect()
-				}
-			}
-		} catch (e) {
-			console.error(e)
-		}
 	}
 })
+
+async function loadBatches() {
+	try {
+		const res = await call('frappe.client.get_list', {
+			doctype: 'LMS Batch',
+			fields: ['name', 'title', 'category'],
+			limit_page_length: 100,
+			order_by: 'creation desc',
+		})
+		batchesList.value = res || []
+	} catch (e) {
+		console.error(e)
+	}
+}
 
 async function loadCourses() {
 	try {
@@ -671,10 +742,37 @@ async function loadCourses() {
 	}
 }
 
+async function onBatchSelect() {
+	if (!form.batch) {
+		batchCoursesList.value = []
+		await updateContentPreview()
+		return
+	}
+	try {
+		const b = await call('lms.lms.ai.ai_assessment_api.api_get_batch_details', { batch: form.batch })
+		if (b) {
+			if (b.title) form.class_level = b.title
+			if (b.category && (!form.subject || form.subject === 'Science')) form.subject = b.category
+			batchCoursesList.value = b.courses || []
+			if (b.courses && b.courses.length > 0) {
+				form.course = b.courses[0].course
+				await onCourseSelect()
+			} else {
+				await updateContentPreview()
+			}
+		}
+	} catch (e) {
+		console.error(e)
+	}
+}
+
 async function onCourseSelect() {
 	chaptersList.value = []
 	form.selected_chapters = []
-	if (!form.course) return
+	if (!form.course) {
+		await updateContentPreview()
+		return
+	}
 	try {
 		const res = await call('frappe.client.get_list', {
 			doctype: 'Course Chapter',
@@ -685,8 +783,38 @@ async function onCourseSelect() {
 		chaptersList.value = res || []
 		// Pre-select all chapters
 		form.selected_chapters = (res || []).map((ch) => ch.name)
+		await updateContentPreview()
 	} catch (e) {
 		console.error(e)
+	}
+}
+
+function selectAllChapters() {
+	form.selected_chapters = chaptersList.value.map((ch) => ch.name)
+	updateContentPreview()
+}
+
+function clearChapters() {
+	form.selected_chapters = []
+	updateContentPreview()
+}
+
+async function updateContentPreview() {
+	if (!form.batch && !form.course) {
+		contentStats.value = null
+		return
+	}
+	loadingContent.value = true
+	try {
+		const res = await call('lms.lms.ai.ai_assessment_api.api_get_content_preview', {
+			batch: form.batch || undefined,
+			course: form.course || undefined,
+		})
+		contentStats.value = res?.stats || null
+	} catch (e) {
+		console.error(e)
+	} finally {
+		loadingContent.value = false
 	}
 }
 
@@ -736,6 +864,7 @@ async function generatePaper() {
 			subject: form.subject,
 			examination_type: form.examination_type,
 			course: form.course || undefined,
+			batch: form.batch || undefined,
 			selected_chapters: JSON.stringify(form.selected_chapters),
 			total_marks: form.total_marks,
 			duration: form.duration,

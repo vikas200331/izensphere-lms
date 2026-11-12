@@ -9,6 +9,7 @@ from frappe.utils.response import build_response
 
 from lms.lms.ai.analytics import get_quiz_assessment_report
 from lms.lms.ai.content_extractor import (
+	extract_batch_content,
 	extract_chapter_content,
 	extract_course_content,
 	extract_lesson_content,
@@ -131,17 +132,49 @@ def api_save_ai_settings(settings: str | dict | None = None):
 
 
 @frappe.whitelist()
-def api_get_content_preview(course: str | None = None, chapter: str | None = None, lesson: str | None = None):
+def api_get_content_preview(
+	course: str | None = None,
+	chapter: str | None = None,
+	lesson: str | None = None,
+	batch: str | None = None,
+):
 	"""Returns extracted educational content preview and sufficiency metrics for the teacher."""
 	_check_teacher_or_admin_permission()
 	if lesson:
 		return extract_lesson_content(lesson)
 	elif chapter:
 		return extract_chapter_content(chapter)
+	elif batch:
+		return extract_batch_content(batch, course_name=course)
 	elif course:
 		return extract_course_content(course)
 	else:
-		frappe.throw(_("Please select Course, Chapter, or Lesson."))
+		frappe.throw(_("Please select Batch, Course, Chapter, or Lesson."))
+
+
+@frappe.whitelist()
+def api_get_batch_details(batch: str):
+	"""Returns batch metadata and its linked courses for examination generation."""
+	_check_teacher_or_admin_permission()
+	if not frappe.db.exists("LMS Batch", batch):
+		frappe.throw(_("Batch {0} not found.").format(batch), frappe.DoesNotExistError)
+
+	doc = frappe.get_doc("LMS Batch", batch)
+	courses = []
+	for c in doc.courses:
+		if c.course:
+			course_title = frappe.db.get_value("LMS Course", c.course, "title") or c.title or c.course
+			courses.append({"course": c.course, "title": course_title})
+
+	return {
+		"name": doc.name,
+		"title": doc.title,
+		"category": doc.category,
+		"description": doc.description,
+		"start_date": str(doc.start_date) if doc.start_date else "",
+		"end_date": str(doc.end_date) if doc.end_date else "",
+		"courses": courses,
+	}
 
 
 @frappe.whitelist()
@@ -254,6 +287,7 @@ def api_generate_question_paper(
 	subject: str = "Science",
 	examination_type: str = "Midterm Examination",
 	course: str | None = None,
+	batch: str | None = None,
 	selected_chapters: str | list | None = None,
 	total_marks: int = 80,
 	duration: str = "3 Hours",
@@ -296,6 +330,7 @@ def api_generate_question_paper(
 		subject=subject,
 		examination_type=examination_type,
 		course=course,
+		batch=batch,
 		selected_chapters=chapters,
 		total_marks=cint(total_marks) or 80,
 		duration=duration,
@@ -370,6 +405,8 @@ def api_get_question_paper(name: str):
 		"academic_year": doc.academic_year,
 		"class_level": doc.class_level,
 		"subject": doc.subject,
+		"batch": doc.batch,
+		"course": doc.course,
 		"examination_type": doc.examination_type,
 		"examination_date": str(doc.examination_date) if doc.examination_date else "",
 		"duration": doc.duration,
@@ -387,7 +424,13 @@ def api_get_question_paper(name: str):
 
 
 @frappe.whitelist()
-def api_list_question_papers(subject: str | None = None, class_level: str | None = None, status: str | None = None):
+def api_list_question_papers(
+	subject: str | None = None,
+	class_level: str | None = None,
+	status: str | None = None,
+	batch: str | None = None,
+	course: str | None = None,
+):
 	"""Returns list of question papers with role-based filtering."""
 	user = frappe.session.user
 	roles = frappe.get_roles(user) if user and user != "Guest" else []
@@ -399,6 +442,10 @@ def api_list_question_papers(subject: str | None = None, class_level: str | None
 		filters["class_level"] = class_level
 	if status:
 		filters["approval_status"] = status
+	if batch:
+		filters["batch"] = batch
+	if course:
+		filters["course"] = course
 
 	# If student, only show published
 	if "LMS Student" in roles and not any(r in roles for r in ["System Manager", "Course Creator", "Instructor", "Principal"]):
@@ -413,6 +460,8 @@ def api_list_question_papers(subject: str | None = None, class_level: str | None
 			"academic_year",
 			"class_level",
 			"subject",
+			"batch",
+			"course",
 			"examination_type",
 			"examination_date",
 			"duration",

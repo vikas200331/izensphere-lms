@@ -362,7 +362,7 @@ def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str
 
 <table class="meta-table">
 	<tr>
-		<td><strong>Class:</strong> {escape_html(paper.class_level or '')}</td>
+		<td><strong>Class / Batch:</strong> {escape_html(paper.class_level or '')}{f" (Batch: {escape_html(paper.batch)})" if getattr(paper, 'batch', None) and paper.batch != paper.class_level else ""}</td>
 		<td><strong>Subject:</strong> {escape_html(paper.subject or '')}</td>
 		<td style="text-align: right;"><strong>Academic Year:</strong> {escape_html(paper.academic_year or '2026-27')}</td>
 	</tr>

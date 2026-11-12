@@ -7,6 +7,7 @@ import frappe
 from frappe.tests.utils import FrappeTestCase
 
 from lms.lms.ai.content_extractor import (
+	extract_batch_content,
 	extract_chapter_content,
 	extract_course_content,
 	extract_lesson_content,
@@ -101,6 +102,25 @@ class TestAIAssessmentGenerator(FrappeTestCase):
 		l2.body = "Sorting algorithms rearrange elements in a list. QuickSort uses divide and conquer with average O(n log n) time complexity. BubbleSort has O(n^2) worst case complexity."
 		l2.insert(ignore_permissions=True)
 		cls.test_lesson_2 = l2.name
+
+		# 4. Create Batch linking test course
+		if not frappe.db.exists("LMS Batch", "test-ai-batch-2026"):
+			b = frappe.new_doc("LMS Batch")
+			b.title = "Test AI Batch 2026"
+			b.category = "Programming"
+			b.start_date = "2026-08-01"
+			b.end_date = "2026-11-01"
+			b.start_time = "09:00:00"
+			b.end_time = "17:00:00"
+			b.timezone = "Asia/Kolkata"
+			b.description = "A fast-track intensive 12-week batch on Computer Architecture and Algorithms."
+			b.batch_details = "<p>Syllabus covers CPU Pipelines, Cache Memory, Sorting Analysis, and Practical Labs.</p>"
+			b.append("instructors", {"instructor": "Administrator"})
+			b.append("courses", {"course": cls.test_course, "title": "Test AI Computer Science"})
+			b.insert(ignore_permissions=True)
+			cls.test_batch = b.name
+		else:
+			cls.test_batch = "test-ai-batch-2026"
 
 		frappe.db.commit()
 
@@ -300,6 +320,40 @@ class TestAIAssessmentGenerator(FrappeTestCase):
 		invalid_paper["total_marks"] = 99  # Mismatch against section sum (20)
 		with self.assertRaises(frappe.ValidationError):
 			save_ai_question_paper(invalid_paper, action="Draft")
+
+	def test_question_paper_generation_based_on_course_and_batch_content(self):
+		"""Verify Question Paper generation based on both Course and Batch content."""
+		# 1. Test batch content extraction
+		batch_data = extract_batch_content(self.test_batch, course_name=self.test_course)
+		self.assertFalse(batch_data["insufficient"])
+		self.assertIn("Test AI Batch 2026", batch_data["content"])
+		self.assertIn("Test AI Computer Science", batch_data["content"])
+		self.assertIn("Computer Architecture Fundamentals", batch_data["content"])
+
+		# 2. Test Question Paper Generation with batch and course
+		paper = generate_question_paper(
+			academic_year="2026-27",
+			class_level="Test AI Batch 2026",
+			subject="Computer Science",
+			examination_type="Midterm Examination",
+			batch=self.test_batch,
+			course=self.test_course,
+			total_marks=50,
+			mode="Chapter-Based",
+		)
+		self.assertTrue(paper["validation"]["is_valid"])
+		self.assertEqual(paper["total_marks"], 50)
+		self.assertEqual(paper["validation"]["calculated_total_marks"], 50)
+		self.assertEqual(paper.get("batch"), self.test_batch)
+		self.assertEqual(paper.get("course"), self.test_course)
+
+		# 3. Save Question Paper and verify persistence of batch link in database
+		saved = save_ai_question_paper(paper, action="Draft")
+		self.assertTrue(frappe.db.exists("AI Question Paper", saved["name"]))
+		saved_doc = frappe.get_doc("AI Question Paper", saved["name"])
+		self.assertEqual(saved_doc.batch, self.test_batch)
+		self.assertEqual(saved_doc.course, self.test_course)
+		self.assertEqual(saved_doc.total_marks, 50)
 
 	def test_question_paper_pdf_generation_and_student_restriction(self):
 		"""Verify Question Paper, Answer Key, and Solutions PDFs are generated, and students are restricted."""
