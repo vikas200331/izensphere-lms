@@ -560,98 +560,143 @@ def fallback_offline_engine(
 		}
 
 	elif generation_type == "Quiz":
-		c1 = headings[0] if headings else "Core Fundamentals"
-		b1 = bullets[0] if bullets else "Fundamental principles and definitions in the learning module."
-		c2 = headings[1] if len(headings) > 1 else (headings[0] if headings else "System Architecture")
-		b2 = bullets[1] if len(bullets) > 1 else "The design adheres to established structured standards."
-		c3 = headings[2] if len(headings) > 2 else "Key Characteristics"
-		b3 = bullets[2] if len(bullets) > 2 else "Variables act as containers for storing values."
-		key_term = b3.split()[0] if b3.split() else "Variable"
+		# Parse requested question count and metadata from user_prompt
+		num_match = re.search(r"Generate exactly (\d+) questions", user_prompt)
+		target_count = int(num_match.group(1)) if num_match else 5
 
-		questions = [
-			{
-				"question": f"Which of the following best describes the key concept regarding {c1}?",
-				"type": "Choices",
-				"question_type_label": "MCQ",
-				"options": [
-					b1[:120],
-					f"It contradicts standard {c1} conventions and should be avoided.",
-					"It applies exclusively to legacy hardware and is deprecated.",
-					"It operates without any prerequisite dependencies or data types.",
-				],
-				"correct_answer": b1[:120],
-				"explanation": f"According to the chapter content: {b1[:200]}",
-				"marks": 1,
-				"difficulty": "Easy",
-				"course": course or "",
-				"chapter": chapter or "",
-				"lesson": lesson or "",
-				"source": source_tag,
-			},
-			{
-				"question": f"True or False: In {c2}, the execution flow strictly follows {b2[:80]}.",
-				"type": "Choices",
-				"question_type_label": "True or False",
-				"options": ["True", "False"],
-				"correct_answer": "True",
-				"explanation": f"Verified directly from educational materials: {b2[:180]}",
-				"marks": 1,
-				"difficulty": "Easy",
-				"course": course or "",
-				"chapter": chapter or "",
-				"lesson": lesson or "",
-				"source": source_tag,
-			},
-			{
-				"question": f"Which of the following statements are TRUE concerning {c3}? (Select all that apply)",
-				"type": "Choices",
-				"question_type_label": "Multiple Select",
-				"options": [
-					f"It is an integral component of {c3}.",
-					"It ensures structural integrity and code safety.",
-					"It requires external manual bypasses in production.",
-					"It is defined within the standard syllabus.",
-				],
-				"correct_answer": [
-					f"It is an integral component of {c3}.",
-					"It ensures structural integrity and code safety.",
-					"It is defined within the standard syllabus.",
-				],
-				"explanation": f"The educational chapter details that {c3} maintains structural integrity and aligns with core standards.",
-				"marks": 2,
-				"difficulty": "Medium",
-				"course": course or "",
-				"chapter": chapter or "",
-				"lesson": lesson or "",
-				"source": source_tag,
-			},
-			{
-				"question": f"In this module, _______ {b3[len(key_term):][:100]}",
-				"type": "User Input",
-				"question_type_label": "Fill in the Blanks",
-				"possibilities": [key_term, key_term.lower(), key_term.capitalize()],
-				"correct_answer": key_term,
-				"explanation": f"The term '{key_term}' completes the statement correctly based on the course syllabus.",
-				"marks": 1,
-				"difficulty": "Medium",
-				"course": course or "",
-				"chapter": chapter or "",
-				"lesson": lesson or "",
-				"source": source_tag,
-			},
-			{
-				"question": f"Explain the architectural significance and real-world implications of {c1} in modern computing environments.",
-				"type": "Open Ended",
-				"question_type_label": "Descriptive Questions",
-				"explanation": f"Evaluation Rubric: Full credit for discussing structural role ({b1[:100]}), fault isolation, and integration trade-offs.",
-				"marks": 3,
-				"difficulty": "Hard",
-				"course": course or "",
-				"chapter": chapter or "",
-				"lesson": lesson or "",
-				"source": source_tag,
-			},
-		]
+		diff_match = re.search(r"Target Difficulty:\s*([A-Za-z ]+)", user_prompt)
+		target_diff = diff_match.group(1).strip() if diff_match else "Medium"
+
+		marks_match = re.search(r"Marks Per Question:\s*(\d+)", user_prompt)
+		per_q_marks = int(marks_match.group(1)) if marks_match else 1
+
+		types_match = re.search(r"Requested Question Types:\s*([^\n\r]+)", user_prompt)
+		if types_match and types_match.group(1).strip():
+			allowed_types = [t.strip() for t in types_match.group(1).split(",") if t.strip()]
+		else:
+			allowed_types = ["MCQ", "Multiple Select", "True or False", "Fill in the Blanks", "Short Answer", "Descriptive Questions"]
+
+		questions = []
+		for idx in range(target_count):
+			q_label = allowed_types[idx % len(allowed_types)]
+			h_idx = idx % max(1, len(headings))
+			h = headings[h_idx] if headings else f"Core Concept {idx + 1}"
+			b = bullets[idx % max(1, len(bullets))] if bullets else "Fundamental principles and definitions in the learning module."
+			words = [w.strip(".,;:()") for w in b.split() if len(w) > 3]
+			key_term = words[0] if words else "System"
+
+			if q_label == "MCQ":
+				q_item = {
+					"question": f"Which of the following best describes the key concept regarding {h}?",
+					"type": "Choices",
+					"question_type_label": "MCQ",
+					"options": [
+						b[:110],
+						f"It contradicts standard {h} conventions and should be avoided.",
+						f"It operates without any prerequisite dependencies or data types in {h}.",
+						f"It applies exclusively to legacy architectures and is obsolete.",
+					],
+					"correct_answer": b[:110],
+					"explanation": f"According to the chapter content: {b[:200]}",
+					"marks": per_q_marks,
+					"difficulty": target_diff if target_diff != "Mixed" else ("Easy" if idx % 3 == 0 else "Medium"),
+					"course": course or "",
+					"chapter": chapter or "",
+					"lesson": lesson or "",
+					"source": source_tag,
+				}
+			elif q_label == "True or False":
+				is_true = (idx % 2 == 0)
+				if is_true:
+					q_text = f"True or False: In {h}, standard behavior guarantees that {b[:85]}."
+					c_ans = "True"
+					exp = f"True. Verified directly from educational materials: {b[:180]}"
+				else:
+					q_text = f"True or False: In {h}, execution bypasses all safety constraints and ignores {b[:70]}."
+					c_ans = "False"
+					exp = f"False. In {h}, execution strictly maintains {b[:180]}."
+				q_item = {
+					"question": q_text,
+					"type": "Choices",
+					"question_type_label": "True or False",
+					"options": ["True", "False"],
+					"correct_answer": c_ans,
+					"explanation": exp,
+					"marks": per_q_marks,
+					"difficulty": "Easy" if target_diff == "Mixed" else target_diff,
+					"course": course or "",
+					"chapter": chapter or "",
+					"lesson": lesson or "",
+					"source": source_tag,
+				}
+			elif q_label == "Multiple Select":
+				q_item = {
+					"question": f"Which of the following statements are TRUE concerning {h}? (Select all that apply)",
+					"type": "Choices",
+					"question_type_label": "Multiple Select",
+					"options": [
+						f"It is an integral component of {h}.",
+						f"It adheres to: {b[:80]}.",
+						"It ensures structural integrity and code safety.",
+						"It requires external manual bypasses in production.",
+					],
+					"correct_answer": [
+						f"It is an integral component of {h}.",
+						f"It adheres to: {b[:80]}.",
+						"It ensures structural integrity and code safety.",
+					],
+					"explanation": f"The educational chapter details that {h} maintains structural integrity and complies with: {b[:160]}",
+					"marks": max(2, per_q_marks),
+					"difficulty": "Medium" if target_diff == "Mixed" else target_diff,
+					"course": course or "",
+					"chapter": chapter or "",
+					"lesson": lesson or "",
+					"source": source_tag,
+				}
+			elif q_label == "Fill in the Blanks":
+				blank_part = b[len(key_term):][:90].strip() or "is implemented according to the syllabus."
+				q_item = {
+					"question": f"In this module, _______ {blank_part}",
+					"type": "User Input",
+					"question_type_label": "Fill in the Blanks",
+					"possibilities": [key_term, key_term.lower(), key_term.capitalize()],
+					"correct_answer": key_term,
+					"explanation": f"The term '{key_term}' completes the statement correctly based on the course syllabus.",
+					"marks": per_q_marks,
+					"difficulty": "Medium" if target_diff == "Mixed" else target_diff,
+					"course": course or "",
+					"chapter": chapter or "",
+					"lesson": lesson or "",
+					"source": source_tag,
+				}
+			elif q_label == "Short Answer":
+				q_item = {
+					"question": f"Briefly explain the primary purpose and operational role of {h}.",
+					"type": "Open Ended",
+					"question_type_label": "Short Answer",
+					"explanation": f"Evaluation Criterion: Answer should clearly describe {h} and identify core mechanism: {b[:120]}.",
+					"marks": max(2, per_q_marks),
+					"difficulty": "Medium" if target_diff == "Mixed" else target_diff,
+					"course": course or "",
+					"chapter": chapter or "",
+					"lesson": lesson or "",
+					"source": source_tag,
+				}
+			else:  # Descriptive Questions
+				q_item = {
+					"question": f"Explain the architectural significance and real-world implications of {h} in modern computing environments.",
+					"type": "Open Ended",
+					"question_type_label": "Descriptive Questions",
+					"explanation": f"Evaluation Rubric: Full credit for discussing structural role ({b[:100]}), fault isolation, and integration trade-offs.",
+					"marks": max(3, per_q_marks),
+					"difficulty": "Hard" if target_diff == "Mixed" else target_diff,
+					"course": course or "",
+					"chapter": chapter or "",
+					"lesson": lesson or "",
+					"source": source_tag,
+				}
+
+			questions.append(q_item)
 
 		result = {
 			"title": f"Assessment on {chapter or course or 'Module'}",

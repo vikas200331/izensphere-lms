@@ -532,6 +532,15 @@ watch(
 	}
 )
 
+watch(
+	() => form.num_questions,
+	(newCount) => {
+		if (newCount && newCount > 0) {
+			form.total_marks = newCount * (form.marks_per_question || 1)
+		}
+	}
+)
+
 onMounted(async () => {
 	await loadCourses()
 	if (form.course) {
