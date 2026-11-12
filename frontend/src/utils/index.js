@@ -938,7 +938,11 @@ export const openSettings = (category, close = null) => {
 }
 
 export const cleanError = (message) => {
-	const cleanMessage = message.replace(/<[^>]+>/g, (match) => {
+	if (!message) return ''
+	const str = typeof message === 'string'
+		? message
+		: (message.message || message.error || (typeof message === 'object' ? JSON.stringify(message) : String(message)))
+	const cleanMessage = str.replace(/<[^>]+>/g, (match) => {
 		return match.replace(/<\/?[^>]+(>|$)/g, '')
 	})
 	return cleanMessage

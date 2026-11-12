@@ -542,7 +542,7 @@
 										<span class="font-semibold text-gray-600 text-xs shrink-0">({{ q.marks }} Mark{{ q.marks > 1 ? 's' : '' }})</span>
 									</div>
 
-									<!-- Options if MCQ -->
+									<!-- Options if MCQ (Student View) -->
 									<div v-if="q.options && previewDocType === 'paper'" class="grid grid-cols-2 gap-2 ps-6 text-xs text-gray-700">
 										<div v-for="(opt, optIdx) in q.options" :key="optIdx" class="flex items-center gap-1.5">
 											<span class="font-semibold">{{ String.fromCharCode(65 + optIdx) }}.</span>
@@ -550,22 +550,124 @@
 										</div>
 									</div>
 
-									<!-- Internal Choice "OR" -->
-									<div v-if="q.internal_choice_question" class="ps-6 space-y-1">
-										<div class="text-center font-bold text-xs text-gray-500 py-1">--- OR ---</div>
+									<!-- Options if MCQ (Answer Key View - Highlighting Correct Answer) -->
+									<div v-if="q.options && previewDocType === 'answer_key'" class="grid grid-cols-1 sm:grid-cols-2 gap-2 ps-6 text-xs my-1.5">
+										<div
+											v-for="(opt, optIdx) in q.options"
+											:key="optIdx"
+											class="flex items-center gap-1.5 px-2 py-1 rounded transition-colors"
+											:class="isCorrectOption(q.correct_answer, opt, optIdx) ? 'bg-emerald-100/90 font-semibold text-emerald-950 border border-emerald-300' : 'text-gray-600 bg-gray-50 border border-transparent'"
+										>
+											<span class="font-bold">{{ String.fromCharCode(65 + optIdx) }}.</span>
+											<span class="flex-1">{{ opt }}</span>
+											<span v-if="isCorrectOption(q.correct_answer, opt, optIdx)" class="font-bold text-emerald-700 ml-1">✓ Correct</span>
+										</div>
+									</div>
+
+									<!-- Internal Choice "OR" (Paper View) -->
+									<div v-if="q.internal_choice_question && previewDocType === 'paper'" class="ps-6 space-y-1">
+										<div class="text-center font-bold text-xs text-gray-500 py-1 uppercase tracking-wide">--- OR ---</div>
 										<div class="text-sm italic text-gray-800">{{ q.internal_choice_question.question }}</div>
 									</div>
 
-									<!-- Answer Key Mode Snippet -->
-									<div v-if="previewDocType === 'answer_key'" class="ps-6 rounded bg-emerald-50 p-2 text-xs text-emerald-900 border border-emerald-200">
-										<strong>{{ __('Answer:') }}</strong> {{ q.correct_answer || q.solution }}
+									<!-- Answer Key Mode: Detailed Marking Scheme According to Marks -->
+									<div v-if="previewDocType === 'answer_key'" class="ps-6 space-y-2 mt-2">
+										<div class="rounded-lg bg-emerald-50/80 border border-emerald-200 p-3 text-xs text-emerald-950 space-y-2 shadow-xs">
+											<div class="flex items-center gap-2 flex-wrap">
+												<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-600 text-white shadow-xs">
+													{{ __('Answer Key') }}
+												</span>
+												<span class="font-semibold text-emerald-900">
+													{{ __('Correct Answer:') }}
+												</span>
+												<span class="font-semibold text-emerald-950 bg-white px-2.5 py-0.5 rounded border border-emerald-300 shadow-2xs">
+													{{ q.correct_answer || __('See Marking Scheme') }}
+												</span>
+											</div>
+
+											<!-- Marking Scheme Breakdown according to marks -->
+											<div class="border-t border-emerald-200/80 pt-2 space-y-1">
+												<div class="font-bold text-emerald-900 flex items-center justify-between">
+													<span>{{ __('Marking Scheme & Evaluation Rubric:') }}</span>
+													<span class="text-emerald-800 text-[11px] font-semibold bg-emerald-100/70 px-2 py-0.5 rounded border border-emerald-200">
+														[{{ q.marks }} Mark{{ q.marks > 1 ? 's' : '' }} Allocation]
+													</span>
+												</div>
+												<div class="whitespace-pre-line text-emerald-950 leading-relaxed font-sans bg-white/90 p-2.5 rounded border border-emerald-200/70 text-xs">
+													{{ q.answer_key_detail || q.solution }}
+												</div>
+											</div>
+										</div>
+
+										<!-- Internal Choice "OR" Answer Key -->
+										<div v-if="q.internal_choice_question" class="rounded-lg bg-emerald-50/60 border border-emerald-200/70 p-3 text-xs text-emerald-950 space-y-2 mt-2">
+											<div class="text-center font-bold text-xs text-emerald-800 py-0.5 uppercase tracking-wide">
+												--- {{ __('OR Alternative Question Answer Key') }} ---
+											</div>
+											<div class="italic text-gray-800 font-medium">
+												{{ q.internal_choice_question.question }}
+											</div>
+											<div class="flex items-center gap-2 flex-wrap pt-1">
+												<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-700 text-white">
+													{{ __('OR Correct Answer:') }}
+												</span>
+												<span class="font-semibold text-emerald-950 bg-white px-2.5 py-0.5 rounded border border-emerald-300">
+													{{ q.internal_choice_question.correct_answer || __('See Rubric') }}
+												</span>
+											</div>
+											<div class="border-t border-emerald-200/80 pt-1.5 space-y-1">
+												<div class="font-bold text-emerald-900 text-[11px] flex items-center justify-between">
+													<span>{{ __('OR Marking Scheme & Evaluation Rubric:') }}</span>
+													<span class="text-emerald-800 text-[11px] font-semibold bg-emerald-100/70 px-2 py-0.5 rounded border border-emerald-200">
+														[{{ q.internal_choice_question.marks || q.marks }} Mark{{ (q.internal_choice_question.marks || q.marks) > 1 ? 's' : '' }} Allocation]
+													</span>
+												</div>
+												<div class="whitespace-pre-line text-emerald-950 leading-relaxed font-sans bg-white/90 p-2.5 rounded border border-emerald-200/70 text-xs">
+													{{ q.internal_choice_question.answer_key_detail || q.internal_choice_question.solution }}
+												</div>
+											</div>
+										</div>
 									</div>
 
-									<!-- Solutions Mode Snippet -->
-									<div v-if="previewDocType === 'solutions'" class="ps-6 rounded bg-sky-50 p-2.5 text-xs text-sky-950 border border-sky-200 space-y-1">
-										<div><strong class="text-sky-800">{{ __('Answer:') }}</strong> {{ q.correct_answer }}</div>
-										<div><strong class="text-sky-800">{{ __('Step-by-Step Marking Solution:') }}</strong></div>
-										<div class="whitespace-pre-line text-gray-700">{{ q.solution }}</div>
+									<!-- Solutions Mode: Detailed Pedagogical Guide -->
+									<div v-if="previewDocType === 'solutions'" class="ps-6 space-y-2 mt-2">
+										<div class="rounded-lg bg-sky-50 border border-sky-200 p-3 text-xs text-sky-950 space-y-2 shadow-xs">
+											<div class="flex items-center gap-2 flex-wrap">
+												<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-sky-600 text-white shadow-xs">
+													{{ __('Pedagogical Solution') }}
+												</span>
+												<span v-if="q.correct_answer" class="font-medium text-sky-950 bg-white px-2 py-0.5 rounded border border-sky-300">
+													<strong>{{ __('Correct Answer:') }}</strong> {{ q.correct_answer }}
+												</span>
+											</div>
+											<div class="border-t border-sky-200/80 pt-2 space-y-1">
+												<div class="font-bold text-sky-900">{{ __('Step-by-Step Marking Explanation:') }}</div>
+												<div class="whitespace-pre-line text-slate-800 leading-relaxed font-sans bg-white/90 p-2.5 rounded border border-sky-200/70 text-xs">
+													{{ q.solution }}
+												</div>
+											</div>
+										</div>
+
+										<!-- Internal Choice OR Solution -->
+										<div v-if="q.internal_choice_question" class="rounded-lg bg-sky-50/70 border border-sky-200/70 p-3 text-xs text-sky-950 space-y-2 mt-2">
+											<div class="text-center font-bold text-xs text-sky-800 py-0.5 uppercase tracking-wide">
+												--- {{ __('OR Alternative Question Solution') }} ---
+											</div>
+											<div class="italic text-gray-800 font-medium">
+												{{ q.internal_choice_question.question }}
+											</div>
+											<div v-if="q.internal_choice_question.correct_answer" class="flex items-center gap-2 pt-1">
+												<span class="font-medium text-sky-950 bg-white px-2 py-0.5 rounded border border-sky-300">
+													<strong>{{ __('OR Correct Answer:') }}</strong> {{ q.internal_choice_question.correct_answer }}
+												</span>
+											</div>
+											<div class="border-t border-sky-200/80 pt-1.5 space-y-1">
+												<div class="font-bold text-sky-900 text-[11px]">{{ __('OR Step-by-Step Marking Explanation:') }}</div>
+												<div class="whitespace-pre-line text-slate-800 leading-relaxed font-sans bg-white/90 p-2.5 rounded border border-sky-200/70 text-xs">
+													{{ q.internal_choice_question.solution }}
+												</div>
+											</div>
+										</div>
 									</div>
 								</div>
 							</div>
@@ -948,6 +1050,18 @@ async function openSavedPaper(paperName) {
 	} catch (e) {
 		toast.error(__('Failed to load question paper details.'))
 	}
+}
+function isCorrectOption(correctAnswer, optText, optIdx) {
+	if (!correctAnswer || !optText) return false
+	const ans = String(correctAnswer).trim().toLowerCase()
+	const opt = String(optText).trim().toLowerCase()
+	const letter = String.fromCharCode(65 + optIdx).toLowerCase()
+	if (ans === opt) return true
+	if (ans.startsWith(`(${letter})`) || ans.startsWith(`${letter}.`) || ans === letter) return true
+	const optClean = opt.replace(/^\([a-d]\)\s*|^[a-d]\.\s*/i, '').trim()
+	const ansClean = ans.replace(/^\([a-d]\)\s*|^[a-d]\.\s*/i, '').trim()
+	if (optClean && ansClean && (optClean === ansClean || ans.includes(optClean))) return true
+	return false
 }
 </script>
 

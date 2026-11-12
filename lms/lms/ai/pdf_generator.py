@@ -112,19 +112,69 @@ def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str
 			# Answer Key / Solution snippets
 			answer_snippet = ""
 			if doc_type == "answer_key":
-				ans = q.get("correct_answer") or q.get("solution") or "N/A"
+				ans = q.get("correct_answer") or "See Marking Scheme"
+				detail = q.get("answer_key_detail") or q.get("solution") or "Credit according to technical accuracy."
+
+				or_ans_snippet = ""
+				if q.get("internal_choice_question"):
+					or_q = q["internal_choice_question"]
+					or_ans = or_q.get("correct_answer") or "See Marking Scheme"
+					or_detail = or_q.get("answer_key_detail") or or_q.get("solution") or ""
+					or_ans_snippet = f"""
+					<div class="or-answer-box" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #86efac;">
+						<div style="font-weight: bold; color: #166534; font-size: 8pt; text-transform: uppercase;">OR Alternative Answer Key & Marking Scheme:</div>
+						<div style="margin: 2px 0;"><strong>Correct Answer:</strong> {escape_html(str(or_ans))}</div>
+						<div style="margin-top: 3px; font-size: 8pt; color: #14532d; line-height: 1.35;">
+							<strong>Evaluation Rubric ({q_marks} Mark{'s' if q_marks > 1 else ''}):</strong><br>
+							{escape_html(str(or_detail)).replace(chr(10), '<br>')}
+						</div>
+					</div>
+					"""
+
 				answer_snippet = f"""
 				<div class="answer-box">
-					<strong>Answer:</strong> {escape_html(str(ans))}
+					<div style="margin-bottom: 3px;">
+						<span style="background: #16a34a; color: #ffffff; padding: 1px 5px; border-radius: 3px; font-weight: bold; font-size: 7.5pt; text-transform: uppercase;">Answer Key</span>
+						<strong style="margin-left: 4px; color: #166534;">Correct Answer:</strong> <span style="font-weight: 600; color: #052e16;">{escape_html(str(ans))}</span>
+					</div>
+					<div style="margin-top: 4px; font-size: 8pt; color: #14532d; line-height: 1.35;">
+						<strong>Marking Scheme & Evaluation Rubric ({q_marks} Mark{'s' if q_marks > 1 else ''}):</strong><br>
+						{escape_html(str(detail)).replace(chr(10), '<br>')}
+					</div>
+					{or_ans_snippet}
 				</div>
 				"""
 			elif doc_type == "detailed_solutions":
 				ans = q.get("correct_answer") or ""
 				sol = q.get("solution") or q.get("explanation") or "Step-by-step solution not provided."
+
+				or_sol_snippet = ""
+				if q.get("internal_choice_question"):
+					or_q = q["internal_choice_question"]
+					or_ans = or_q.get("correct_answer") or ""
+					or_sol = or_q.get("solution") or or_q.get("explanation") or ""
+					or_sol_snippet = f"""
+					<div class="or-solution-box" style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #7dd3fc;">
+						<div style="font-weight: bold; color: #0369a1; font-size: 8pt; text-transform: uppercase;">OR Alternative Step-by-Step Solution:</div>
+						{f'<div style="margin: 2px 0;"><strong>OR Answer:</strong> {escape_html(str(or_ans))}</div>' if or_ans else ''}
+						<div style="margin-top: 3px; font-size: 8pt; color: #0c4a6e; line-height: 1.35;">
+							<strong>Marking Solution & Explanation:</strong><br>
+							{escape_html(str(or_sol)).replace(chr(10), '<br>')}
+						</div>
+					</div>
+					"""
+
 				answer_snippet = f"""
 				<div class="solution-box">
-					<div class="sol-ans"><strong>Correct Answer:</strong> {escape_html(str(ans))}</div>
-					<div class="sol-steps"><strong>Marking Scheme & Solution:</strong><br>{escape_html(str(sol)).replace(chr(10), '<br>')}</div>
+					<div style="margin-bottom: 3px;">
+						<span style="background: #0284c7; color: #ffffff; padding: 1px 5px; border-radius: 3px; font-weight: bold; font-size: 7.5pt; text-transform: uppercase;">Solution</span>
+						{f'<strong style="margin-left: 4px; color: #0369a1;">Correct Answer:</strong> <span style="font-weight: 600;">{escape_html(str(ans))}</span>' if ans else ''}
+					</div>
+					<div class="sol-steps" style="margin-top: 4px; font-size: 8pt; color: #0f172a; line-height: 1.35;">
+						<strong style="color: #0369a1;">Marking Scheme & Pedagogical Solution:</strong><br>
+						{escape_html(str(sol)).replace(chr(10), '<br>')}
+					</div>
+					{or_sol_snippet}
 				</div>
 				"""
 

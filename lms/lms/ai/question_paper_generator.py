@@ -19,7 +19,7 @@ def build_paper_system_prompt(language: str = "English", mode: str = "Chapter-Ba
 	if mode == "Chapter-Based":
 		rule = (
 			"STRICT REQUIREMENT: All questions MUST be rooted exclusively in the provided educational content. "
-			"Do NOT invent concepts or facts absent from the chapters."
+			"Do NOT invent concepts or facts absent from the chapters and batch syllabus."
 		)
 	else:
 		rule = (
@@ -27,19 +27,28 @@ def build_paper_system_prompt(language: str = "English", mode: str = "Chapter-Ba
 			"curriculum-aligned subject knowledge. Clearly label questions using external knowledge with 'source': 'Extended Knowledge'."
 		)
 
-	return f"""You are an Expert Examination Board Controller and Question Paper Setter for Izensphere International LMS.
-Your mission is to construct a rigorous, balanced, and perfectly structured formal examination question paper in {language}.
+	return f"""You are an Expert Examination Board Controller and Senior Question Paper Setter for Izensphere International LMS.
+Your mission is to construct a rigorous, balanced, highly diversified, and perfectly structured formal examination question paper in {language}.
 
 {rule}
 
-You must generate:
-1. School header metadata & examination instructions.
-2. Section-wise questions with continuous numbering (e.g. Q1 to Qn).
-3. Internal choice questions ("OR" choices) for higher-mark questions (e.g. 3-mark or 5-mark questions).
-4. Marks allocation per question.
-5. Difficulty distribution (Easy, Medium, Hard).
-6. Complete, unambiguous Answer Key.
-7. Step-by-step Detailed Solutions with marking schemes and rubric points.
+QUESTION PAPER DIVERSITY REQUIREMENTS:
+1. Every question MUST be unique, realistic, and test a distinct educational concept across the syllabus.
+2. NEVER repeat the same question stem or placeholder wording across questions.
+3. For Multiple Choice Questions (MCQs): Provide 4 plausible, authentic options labeled "(A)", "(B)", "(C)", "(D)".
+4. For Higher Marks Questions (Section D & E): Include internal choice ("OR") questions on equally rigorous topics.
+
+DETAILED ANSWER KEY & MARKING SCHEME REQUIREMENTS (STRICT):
+For EVERY question, you MUST generate:
+1. "correct_answer": The definitive correct answer or option text.
+2. "answer_key_detail": A comprehensive, point-by-point Answer Key explicitly broken down according to the marks allocated:
+   - For 1-mark questions: Definitive answer + 1 key conceptual reason.
+   - For 2-mark questions: 2 distinct evaluation criteria (1 mark each).
+   - For 3-mark questions: 3 distinct points or steps (1 mark each).
+   - For 4-mark questions: 4 sub-parts or 2 marks for analysis + 2 marks for implementation.
+   - For 5-mark questions: Detailed multi-part rubric (e.g. Principle/Definition: 1 mark; Core Mechanism/Architecture: 2 marks; Implementation/Syntax: 1 mark; Use-Case/Significance: 1 mark).
+3. "solution": Full step-by-step textbook solution explaining the concepts thoroughly.
+4. "internal_choice_question": If an alternative "OR" question is provided, it MUST ALSO contain its own "correct_answer", "answer_key_detail", and "solution" with equivalent detail!
 
 CRITICAL MATHEMATICAL RULE:
 The sum of marks of all questions in all sections MUST EQUAL the requested Total Marks EXACTLY.
@@ -47,10 +56,10 @@ For questions with an internal choice (OR), count the marks only once!
 
 OUTPUT STRICT JSON SCHEMA:
 {{
-  "title": "Class 10 Science Midterm Examination 2026-27",
+  "title": "Examination Title",
   "academic_year": "2026-27",
-  "class_level": "Class 10",
-  "subject": "Science",
+  "class_level": "Class / Batch Name",
+  "subject": "Subject Name",
   "examination_type": "Midterm Examination",
   "duration": "3 Hours",
   "total_marks": 80,
@@ -58,23 +67,24 @@ OUTPUT STRICT JSON SCHEMA:
   "sections": [
     {{
       "section_name": "Section A",
-      "title": "Objective Type Questions",
-      "instructions": "Each question carries 1 mark.",
+      "title": "Multiple Choice Questions",
+      "instructions": "Each question carries 1 mark. Select the correct option.",
       "question_type": "MCQ",
       "marks_per_question": 1,
-      "questions_count": 16,
-      "total_marks": 16,
+      "questions_count": 20,
+      "total_marks": 20,
       "questions": [
         {{
           "question_number": "1",
-          "question": "Question text...",
-          "options": ["(A) ...", "(B) ...", "(C) ...", "(D) ..."],
-          "correct_answer": "(B) ...",
+          "question": "Specific, realistic question text...",
+          "options": ["(A) Choice 1", "(B) Choice 2", "(C) Choice 3", "(D) Choice 4"],
+          "correct_answer": "(B) Choice 2",
           "marks": 1,
           "difficulty": "Easy",
           "chapter": "Chapter name",
           "source": "Course Content",
-          "solution": "Brief solution...",
+          "answer_key_detail": "[1 Mark] Correct Answer: (B) Choice 2. Key Reason: Explanation...",
+          "solution": "Comprehensive explanation of why option (B) is correct and why other choices are invalid.",
           "internal_choice_question": null
         }}
       ]

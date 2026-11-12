@@ -9,6 +9,7 @@ import requests
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, now_datetime
+from lms.lms.ai.curriculum_paper_builder import build_curriculum_question_paper_sections
 
 # Model Pricing per 1M tokens (USD) for OpenAI models
 MODEL_PRICING = {
@@ -660,241 +661,44 @@ def fallback_offline_engine(
 
 	else:
 		# Model Question Paper Generation (Sections A, B, C, D, E)
-		# Parse requested total marks
+		# Parse requested total marks and examination metadata
 		marks_match = re.search(r"Total Marks:\s*(\d+)", user_prompt)
 		requested_total = int(marks_match.group(1)) if marks_match else 80
 
-		h0 = headings[0] if headings else "Core Concepts"
-		h1 = headings[1] if len(headings) > 1 else "System Architecture"
-		h2 = headings[2] if len(headings) > 2 else "Data Management"
-		h3 = headings[3] if len(headings) > 3 else "Algorithm Analysis"
-		b0 = bullets[0] if bullets else "Standard operational parameters"
+		ay_match = re.search(r"Academic Year:\s*([^\n\r]+)", user_prompt)
+		req_ay = ay_match.group(1).strip() if ay_match else "2026-27"
 
-		if requested_total == 100:
-			# 5 Standard Board Sections totaling exactly 100
-			sections = [
-				{
-					"section_name": "Section A",
-					"title": "Multiple Choice Questions",
-					"question_type": "MCQ",
-					"marks_per_question": 1,
-					"questions_count": 20,
-					"total_marks": 20,
-					"instructions": "All questions are compulsory. Select the correct option.",
-					"questions": [
-						{
-							"question_number": str(i + 1),
-							"question": f"Which statement is accurate regarding {h0} (Subtopic {i+1})?",
-							"options": ["(A) Standard verified definition", "(B) Incompatible implementation", "(C) Unvalidated routine", "(D) Deprecated procedure"],
-							"correct_answer": "(A) Standard verified definition",
-							"marks": 1,
-							"difficulty": "Easy",
-							"source": source_tag,
-							"solution": "Option (A) is correct as established in the chapter curriculum.",
-						}
-						for i in range(20)
-					],
-				},
-				{
-					"section_name": "Section B",
-					"title": "Fill in the Blanks / Very Short Answers",
-					"question_type": "Fill in the Blanks",
-					"marks_per_question": 1,
-					"questions_count": 10,
-					"total_marks": 10,
-					"instructions": "Fill in the blank or provide a one-line answer.",
-					"questions": [
-						{
-							"question_number": str(21 + i),
-							"question": f"In {h1}, the essential component responsible for instruction dispatch is called _______.",
-							"correct_answer": "Control Unit",
-							"marks": 1,
-							"difficulty": "Easy",
-							"source": source_tag,
-							"solution": "Control Unit coordinates the sequence of execution.",
-						}
-						for i in range(10)
-					],
-				},
-				{
-					"section_name": "Section C",
-					"title": "Short Answer Questions",
-					"question_type": "Short Answer",
-					"marks_per_question": 3,
-					"questions_count": 10,
-					"total_marks": 30,
-					"instructions": "Answer in approximately 50-80 words.",
-					"questions": [
-						{
-							"question_number": str(31 + i),
-							"question": f"Differentiate between synchronous and asynchronous operation in {h2}.",
-							"marks": 3,
-							"difficulty": "Medium",
-							"source": source_tag,
-							"solution": "Full credit (3 marks): 1 mark for timing definition, 1 mark for throughput contrast, 1 mark for application scenario.",
-						}
-						for i in range(10)
-					],
-				},
-				{
-					"section_name": "Section D",
-					"title": "Long Answer / Descriptive Questions",
-					"question_type": "Long Answer",
-					"marks_per_question": 5,
-					"questions_count": 4,
-					"total_marks": 20,
-					"instructions": "Answer in 120-150 words. Internal choices are provided.",
-					"questions": [
-						{
-							"question_number": str(41 + i),
-							"question": f"Analyze the comprehensive architecture of {h3} and detail the primary execution flow.",
-							"marks": 5,
-							"difficulty": "Hard",
-							"source": source_tag,
-							"solution": "Marking Scheme: 2 marks for architectural structure, 2 marks for execution phases, 1 mark for error recovery.",
-							"internal_choice_question": {
-								"question": f"OR: Discuss alternative architectural paradigms for {h3} and compare efficiency benchmarks.",
-								"solution": "Full credit for comparative evaluation and resource utilization curves.",
-							},
-						}
-						for i in range(4)
-					],
-				},
-				{
-					"section_name": "Section E",
-					"title": "Application-Based / Higher Order Thinking Questions",
-					"question_type": "Application-Based",
-					"marks_per_question": 5,
-					"questions_count": 4,
-					"total_marks": 20,
-					"instructions": "Case-based and analytical application problems.",
-					"questions": [
-						{
-							"question_number": str(45 + i),
-							"question": f"Case Scenario: An enterprise deployment encounters throughput bottlenecks under {h0}. Design a mitigation strategy.",
-							"marks": 5,
-							"difficulty": "Hard",
-							"source": source_tag,
-							"solution": "Marking scheme: 2 marks for root cause diagnosis, 2 marks for architectural remedy, 1 mark for validation metrics.",
-						}
-						for i in range(4)
-					],
-				},
-			]
-		else:
-			# Dynamic section generator matching requested_total marks
-			# Sec A (1m), Sec B (2m), Sec C (3m), Sec D (5m), Sec E (4m)
-			m = requested_total
-			q_a = max(2, m // 5)
-			rem = m - q_a
-			q_b = max(1, rem // 10)
-			rem -= q_b * 2
-			q_c = max(1, rem // 6)
-			rem -= q_c * 3
-			q_d = max(1, rem // 5)
-			rem -= q_d * 5
-			# Balance into Sec A
-			q_a += rem
+		cl_match = re.search(r"Class:\s*([^\n\r]+)", user_prompt)
+		req_cl = cl_match.group(1).strip() if cl_match else "Class 10"
 
-			sections = [
-				{
-					"section_name": "Section A",
-					"title": "Multiple Choice Questions",
-					"question_type": "MCQ",
-					"marks_per_question": 1,
-					"questions_count": q_a,
-					"total_marks": q_a,
-					"instructions": "All questions are compulsory. Choose the best answer.",
-					"questions": [
-						{
-							"question_number": str(i + 1),
-							"question": f"Which option accurately identifies the primary role of {h0}?",
-							"options": ["(A) Correct curriculum definition", "(B) Faulty assumption", "(C) Unrelated concept", "(D) Redundant structure"],
-							"correct_answer": "(A) Correct curriculum definition",
-							"marks": 1,
-							"difficulty": "Easy",
-							"source": source_tag,
-							"solution": "Option (A) is correct based on core syllabus guidelines.",
-						}
-						for i in range(q_a)
-					],
-				},
-				{
-					"section_name": "Section B",
-					"title": "Fill in the Blanks / Very Short Answers",
-					"question_type": "Short Answer",
-					"marks_per_question": 2,
-					"questions_count": q_b,
-					"total_marks": q_b * 2,
-					"instructions": "Answer in one or two sentences.",
-					"questions": [
-						{
-							"question_number": str(q_a + 1 + i),
-							"question": f"Define the primary function of {h1}.",
-							"marks": 2,
-							"difficulty": "Easy",
-							"source": source_tag,
-							"solution": f"Core definition and operational context for {h1} (2 Marks).",
-						}
-						for i in range(q_b)
-					],
-				},
-				{
-					"section_name": "Section C",
-					"title": "Short Answer Questions",
-					"question_type": "Short Answer",
-					"marks_per_question": 3,
-					"questions_count": q_c,
-					"total_marks": q_c * 3,
-					"instructions": "Answer in approximately 50 words.",
-					"questions": [
-						{
-							"question_number": str(q_a + q_b + 1 + i),
-							"question": f"Explain key characteristics and constraints of {h2}.",
-							"marks": 3,
-							"difficulty": "Medium",
-							"source": source_tag,
-							"solution": f"3 marks: 1.5 marks for definition, 1.5 marks for constraints.",
-						}
-						for i in range(q_c)
-					],
-				},
-				{
-					"section_name": "Section D",
-					"title": "Long Answer / Descriptive Questions",
-					"question_type": "Long Answer",
-					"marks_per_question": 5,
-					"questions_count": q_d,
-					"total_marks": q_d * 5,
-					"instructions": "Answer in 120 words. Internal choices available.",
-					"questions": [
-						{
-							"question_number": str(q_a + q_b + q_c + 1 + i),
-							"question": f"Detail the structural architecture of {h3} with an illustrative diagram and real-world example.",
-							"marks": 5,
-							"difficulty": "Hard",
-							"source": source_tag,
-							"solution": "2 marks for diagram, 2 marks for components, 1 mark for practical example.",
-							"internal_choice_question": {
-								"question": f"OR: Discuss advantages, limitations, and future scalability of {h3}.",
-								"solution": "Full credit for thorough analysis (5 marks).",
-							},
-						}
-						for i in range(q_d)
-					],
-				},
-			]
+		sub_match = re.search(r"Subject:\s*([^\n\r]+)", user_prompt)
+		req_sub = sub_match.group(1).strip() if sub_match else (course or "Programming & Web Development")
+
+		et_match = re.search(r"Examination Type:\s*([^\n\r]+)", user_prompt)
+		req_et = et_match.group(1).strip() if et_match else "Midterm Examination"
+
+		dur_match = re.search(r"Duration:\s*([^\n\r]+)", user_prompt)
+		req_dur = dur_match.group(1).strip() if dur_match else "3 Hours"
+
+		sections = build_curriculum_question_paper_sections(
+			requested_total=requested_total,
+			content_text=content_text,
+			source_tag=source_tag,
+			course=course,
+			batch=batch,
+			user_prompt=user_prompt,
+		)
 
 		calc_total = sum(s["total_marks"] for s in sections)
 		result = {
 			"school_name": "Izensphere International School",
-			"academic_year": "2026-27",
-			"class_level": "Class 10",
-			"subject": "Science / Computer Science",
-			"examination_type": "Midterm Examination",
-			"duration": "3 Hours",
+			"academic_year": req_ay,
+			"class_level": req_cl,
+			"subject": req_sub,
+			"examination_type": req_et,
+			"duration": req_dur,
 			"total_marks": calc_total,
-			"instructions": "1. All questions are compulsory.\n2. The question paper contains designated sections.\n3. Verify that total marks correspond to section sums.\n4. Use of electronic calculators is not permitted.",
+			"instructions": "1. All questions are compulsory across Sections A, B, C, D, and E.\n2. Section A consists of Multiple Choice Questions carrying 1 mark each.\n3. Section B consists of Very Short Answer questions carrying 2 marks each.\n4. Section C consists of Short Answer questions carrying 3 marks each.\n5. Section D consists of Long Answer questions carrying 5 marks each with internal choice questions ('OR').\n6. Section E consists of Application-Based / Higher Order Thinking questions carrying 4 marks each.\n7. Use of electronic calculators or unauthorized reference sheets is strictly prohibited.",
 			"sections": sections,
 		}
 
