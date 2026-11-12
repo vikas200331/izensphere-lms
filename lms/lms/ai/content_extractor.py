@@ -187,6 +187,33 @@ def extract_lesson_content(lesson_name: str) -> dict:
 				text_sections.append("## Highlighted Excerpt\n" + n.highlighted_text.strip())
 
 	full_text = "\n\n".join(text_sections).strip()
+
+	# If the lesson alone has sparse content (< 150 chars), supplement with Chapter and Course curriculum context
+	if len(full_text) < 150 and (lesson.chapter or lesson.course):
+		context_sections = []
+		if lesson.chapter and frappe.db.exists("Course Chapter", lesson.chapter):
+			ch_doc = frappe.get_doc("Course Chapter", lesson.chapter)
+			context_sections.append(f"## Chapter Context: {ch_doc.title}")
+			siblings = frappe.get_all(
+				"Course Lesson",
+				filters={"chapter": ch_doc.name, "name": ["!=", lesson.name]},
+				fields=["title"],
+				limit=5,
+			)
+			if siblings:
+				context_sections.append("## Chapter Key Topics:\n" + "\n".join(f"- {s.title.strip()}" for s in siblings if s.title))
+
+		if lesson.course and frappe.db.exists("LMS Course", lesson.course):
+			course_doc = frappe.get_doc("LMS Course", lesson.course)
+			if course_doc.short_introduction:
+				context_sections.append(f"## Course Background\n{course_doc.short_introduction.strip()}")
+			if course_doc.description:
+				clean_desc = clean_html(course_doc.description)
+				context_sections.append(f"## Curriculum Scope\n{clean_desc[:1200].strip()}")
+
+		if context_sections:
+			full_text = full_text + "\n\n" + "\n\n".join(context_sections)
+
 	stats = get_content_stats(full_text)
 
 	return {
@@ -237,6 +264,19 @@ def extract_chapter_content(chapter_name: str) -> dict:
 				text_sections.append(f"## Chapter PDF Document: {f.file_name}\n" + pdf_text[:20000])
 
 	full_text = "\n\n".join(text_sections).strip()
+
+	# If the chapter alone has sparse content (< 150 chars), supplement with Course curriculum context
+	if len(full_text) < 150 and chapter.course and frappe.db.exists("LMS Course", chapter.course):
+		course_doc = frappe.get_doc("LMS Course", chapter.course)
+		context_sections = []
+		if course_doc.short_introduction:
+			context_sections.append(f"## Course Background\n{course_doc.short_introduction.strip()}")
+		if course_doc.description:
+			clean_desc = clean_html(course_doc.description)
+			context_sections.append(f"## Curriculum Scope\n{clean_desc[:1200].strip()}")
+		if context_sections:
+			full_text = full_text + "\n\n" + "\n\n".join(context_sections)
+
 	stats = get_content_stats(full_text)
 
 	return {
