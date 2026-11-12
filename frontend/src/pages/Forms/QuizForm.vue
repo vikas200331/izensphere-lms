@@ -537,6 +537,19 @@ import ResponsiveListView from '@/components/ResponsiveListView.vue'
 import { resourceErrorMessage, submitResource } from '@/utils/resource'
 import AIQuizModal from '@/components/AI/AIQuizModal.vue'
 
+const props = defineProps({
+	quizID: {
+		type: String,
+		required: true,
+	},
+})
+
+const quizDetails = createDocumentResource({
+	doctype: 'LMS Quiz',
+	name: props.quizID,
+	auto: false,
+})
+
 const showAIQuizModal = ref(false)
 
 function onAIQuizSaved(savedQuiz) {
@@ -836,13 +849,6 @@ const deleteQuiz = () => {
 	})
 }
 
-const props = defineProps({
-	quizID: {
-		type: String,
-		required: true,
-	},
-})
-
 const questions = computed(() => {
 	return quizDetails.doc?.questions || []
 })
@@ -864,12 +870,6 @@ onBeforeUnmount(() => {
 	// Flush a pending edit that the debounce hasn't fired yet, so navigating
 	// away immediately after a change can't drop it.
 	if (quizDetails.isDirty) submitQuiz({ silent: true })
-})
-
-const quizDetails = createDocumentResource({
-	doctype: 'LMS Quiz',
-	name: props.quizID,
-	auto: false,
 })
 
 const validateTitle = () => {
