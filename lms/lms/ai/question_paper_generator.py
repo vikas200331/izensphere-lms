@@ -118,42 +118,69 @@ def generate_question_paper(
 	if not difficulty_distribution:
 		difficulty_distribution = {"easy": 30, "medium": 40, "hard": 30}
 
-	# Extract content from Batch and/or selected Course Chapters
+	# Extract content from Batch, Course, and selected Course Chapters (Additive)
 	all_content_texts = []
 	chapter_names = []
 	batch_title = None
+	course_title = None
 
-	if batch:
+	# 1. Batch extraction
+	batch_res = None
+	if batch and frappe.db.exists("LMS Batch", batch):
 		batch_res = extract_batch_content(batch, course_name=course, selected_chapters=selected_chapters)
-		batch_title = batch_res.get("title", batch)
+		batch_title = (batch_res.get("title") or batch).strip()
 		if batch_res.get("content"):
 			all_content_texts.append(batch_res["content"])
-		# If course is not set, pick the first course from batch if available
-		if not course and batch_res.get("courses"):
-			course = batch_res["courses"][0].get("name")
-		# Collect chapter names from extracted batch courses
+		if not course:
+			if batch_res.get("courses") and batch_res["courses"][0].get("name"):
+				course = batch_res["courses"][0].get("name")
+			elif batch_res.get("batch_courses") and batch_res["batch_courses"]:
+				course = batch_res["batch_courses"][0]
+			elif frappe.db.exists("LMS Course", batch):
+				course = batch
 		for c_info in batch_res.get("courses", []):
 			for ch in c_info.get("chapters", []):
 				ch_t = ch.get("title") or ch.get("name")
 				if ch_t and ch_t not in chapter_names:
 					chapter_names.append(ch_t)
-		# Auto-adjust class_level and subject if default placeholders were used
-		if (class_level == "Class 10" or not class_level) and batch_title:
-			class_level = batch_title
-		if (subject == "Science" or not subject) and batch_res.get("category"):
-			subject = batch_res["category"]
-	elif selected_chapters:
+
+	# 2. Course extraction (ensure course details are included)
+	if course and frappe.db.exists("LMS Course", course):
+		course_doc = frappe.get_doc("LMS Course", course)
+		course_title = course_doc.title.strip()
+		# If course content wasn't already included by batch_res, extract it
+		if not batch_res or not batch_res.get("courses"):
+			course_res = extract_course_content(course, selected_chapters=selected_chapters)
+			if course_res.get("content"):
+				all_content_texts.append(course_res["content"])
+			for ch in course_res.get("chapters", []):
+				ch_t = ch.get("title") or ch.get("name")
+				if ch_t and ch_t not in chapter_names:
+					chapter_names.append(ch_t)
+
+	# 3. Selected chapters extraction (ensure any explicitly chosen chapter is included)
+	if selected_chapters:
 		for ch_name in selected_chapters:
-			ch_res = extract_chapter_content(ch_name)
-			chapter_names.append(ch_res.get("title", ch_name))
-			if ch_res.get("content"):
-				all_content_texts.append(ch_res["content"])
-	elif course:
-		course_res = extract_course_content(course)
-		all_content_texts.append(course_res.get("content", ""))
-		chapter_names = [ch["title"] for ch in course_res.get("chapters", [])]
-		if (subject == "Science" or not subject) and course_res.get("title"):
-			subject = course_res["title"]
+			if frappe.db.exists("Course Chapter", ch_name):
+				ch_res = extract_chapter_content(ch_name)
+				ch_t = ch_res.get("title", ch_name)
+				if ch_t not in chapter_names:
+					chapter_names.append(ch_t)
+				if not any(ch_t in t for t in all_content_texts):
+					if ch_res.get("content"):
+						all_content_texts.append(ch_res["content"])
+
+	# Auto-adjust class_level and subject to match actual Course / Batch
+	if course_title:
+		if not subject or subject == "Science":
+			subject = course_title
+		if not class_level or class_level == "Class 10":
+			class_level = course_title
+	if batch_title:
+		if not class_level or class_level == "Class 10" or (course_title and class_level == course_title):
+			class_level = batch_title
+		if not subject or subject == "Science":
+			subject = batch_res.get("category") or batch_title
 
 	combined_content = "\n\n---\n\n".join(all_content_texts).strip()
 
@@ -255,6 +282,10 @@ For 5-mark and 4-mark questions, include an alternative internal choice question
 	except Exception:
 		pass
 
+	title_scope = batch_title or course_title or subject
+	paper_title_str = f"{title_scope} - {examination_type} ({academic_year})".strip()
+
+	result["title"] = paper_title_str
 	result["school_name"] = school_name
 	result["school_logo"] = school_logo
 	result["academic_year"] = academic_year
@@ -264,6 +295,7 @@ For 5-mark and 4-mark questions, include an alternative internal choice question
 	result["duration"] = duration
 	result["total_marks"] = total_target_marks
 	result["course"] = course
+	result["course_title"] = course_title
 	result["batch"] = batch
 	result["batch_title"] = batch_title
 	result["selected_chapters"] = selected_chapters or []

@@ -425,6 +425,10 @@ def extract_batch_content(
 		target_courses = [course_name]
 	elif batch_courses:
 		target_courses = batch_courses
+	elif frappe.db.exists("LMS Course", batch_name):
+		target_courses = [batch_name]
+	elif frappe.db.exists("LMS Course", batch_name.strip().lower()):
+		target_courses = [batch_name.strip().lower()]
 
 	course_data = []
 	for c_name in target_courses:

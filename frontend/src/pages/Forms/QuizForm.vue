@@ -180,7 +180,7 @@
 	</div>
 
 	<div
-		v-else-if="quizDetails.doc"
+		v-if="quizDetails.doc"
 		class="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[7fr,3fr]"
 	>
 		<div class="flex min-w-0 flex-col lg:min-h-0">

@@ -85,15 +85,7 @@ def build_curriculum_question_paper_sections(
 			]
 
 	# 2. Determine Subject Domain & Context
-	search_corpus = f"{content_text} {course or ''} {batch or ''} {user_prompt}".lower()
-	is_cs_domain = (
-		"architecture" in search_corpus
-		or "cpu" in search_corpus
-		or "alu" in search_corpus
-		or "quicksort" in search_corpus
-		or "bubblesort" in search_corpus
-		or "computer science" in search_corpus
-	)
+	domain = _detect_subject_domain(content_text=content_text, course=course, batch=batch, user_prompt=user_prompt)
 
 	# Extract content keywords/headings for dynamic anchoring
 	raw_lines = [l.strip() for l in content_text.splitlines() if l.strip()]
@@ -101,18 +93,44 @@ def build_curriculum_question_paper_sections(
 	bullets = [l.lstrip("*-•1234567890. ").strip() for l in raw_lines if len(l) > 15 and not l.startswith("#")]
 
 	# 3. Retrieve Domain Question Pools
-	if is_cs_domain:
+	if domain == "java":
+		pool_a = _get_java_mcq_pool(source_tag)
+		pool_b = _get_java_vsa_pool(source_tag)
+		pool_c = _get_java_short_pool(source_tag)
+		pool_d = _get_java_long_pool(source_tag)
+		pool_e = _get_java_application_pool(source_tag)
+	elif domain == "cs":
 		pool_a = _get_cs_mcq_pool(source_tag)
 		pool_b = _get_cs_vsa_pool(source_tag)
 		pool_c = _get_cs_short_pool(source_tag)
 		pool_d = _get_cs_long_pool(source_tag)
 		pool_e = _get_cs_application_pool(source_tag)
-	else:
+	elif domain == "c":
+		pool_a = _get_c_mcq_pool(source_tag)
+		pool_b = _get_c_vsa_pool(source_tag)
+		pool_c = _get_c_short_pool(source_tag)
+		pool_d = _get_c_long_pool(source_tag)
+		pool_e = _get_c_application_pool(source_tag)
+	elif domain == "frappe":
+		pool_a = _get_frappe_mcq_pool(source_tag)
+		pool_b = _get_frappe_vsa_pool(source_tag)
+		pool_c = _get_frappe_short_pool(source_tag)
+		pool_d = _get_frappe_long_pool(source_tag)
+		pool_e = _get_frappe_application_pool(source_tag)
+	elif domain == "python":
 		pool_a = _get_python_mcq_pool(source_tag)
 		pool_b = _get_python_vsa_pool(source_tag)
 		pool_c = _get_python_short_pool(source_tag)
 		pool_d = _get_python_long_pool(source_tag)
 		pool_e = _get_python_application_pool(source_tag)
+	else:
+		# Generic Content-Driven Pools built dynamically from headings & bullets
+		p_a, p_b, p_c, p_d, p_e = _build_dynamic_content_pools(content_text, headings, bullets, source_tag)
+		pool_a = p_a or _get_python_mcq_pool(source_tag)
+		pool_b = p_b or _get_python_vsa_pool(source_tag)
+		pool_c = p_c or _get_python_short_pool(source_tag)
+		pool_d = p_d or _get_python_long_pool(source_tag)
+		pool_e = p_e or _get_python_application_pool(source_tag)
 
 	# 4. Build Sections with Continuous Question Numbering
 	sections = []
@@ -185,6 +203,50 @@ def build_curriculum_question_paper_sections(
 	return sections
 
 
+def _detect_subject_domain(content_text: str, course: Optional[str], batch: Optional[str], user_prompt: str) -> str:
+	"""Determines the appropriate educational domain from course, batch, user_prompt, and content text."""
+	c_lower = (course or "").lower().strip()
+	b_lower = (batch or "").lower().strip()
+
+	# 1. Explicit Course / Batch slug check (Highest Priority)
+	if "python" in c_lower or "python" in b_lower:
+		return "python"
+	if c_lower == "java" or b_lower == "java" or (c_lower.startswith("java") and "javascript" not in c_lower):
+		return "java"
+	if c_lower == "c" or b_lower == "c":
+		return "c"
+	if "computer-science" in c_lower or "computer-science" in b_lower:
+		return "cs"
+	if "frappe" in c_lower or "frappe" in b_lower:
+		return "frappe"
+
+	# 2. Search corpus check (Prompt, Title, and Content)
+	search_corpus = f"{course or ''} {batch or ''} {user_prompt} {content_text}".lower()
+
+	# Python check
+	if "python" in search_corpus or "django" in search_corpus or "flask" in search_corpus or "guido van rossum" in search_corpus:
+		return "python"
+
+	# Java check (ensure 'javascript' doesn't cause a false positive)
+	if re.search(r"\bjava\b", search_corpus) or "james gosling" in search_corpus or "jvm" in search_corpus or "vikas s" in search_corpus:
+		if "python" not in search_corpus:
+			return "java"
+
+	# CS check
+	if "architecture" in search_corpus or "cpu" in search_corpus or "alu" in search_corpus or "quicksort" in search_corpus:
+		return "cs"
+
+	# C check
+	if "dennis ritchie" in search_corpus or (re.search(r"\bc programming\b", search_corpus)):
+		return "c"
+
+	# Frappe check
+	if "frappe" in search_corpus or "doctype" in search_corpus:
+		return "frappe"
+
+	return "content_driven"
+
+
 def _infer_section_title(section_name: str, q_type: str) -> str:
 	if "Section A" in section_name or q_type == "MCQ":
 		return "Multiple Choice Questions"
@@ -248,25 +310,25 @@ def _synthesize_extra_question(
 			"question": f"State two fundamental operational characteristics of {topic}.",
 			"correct_answer": f"1. Adherence to {bullet[:60]}. 2. Deterministic execution state.",
 			"marks": 2,
-			"difficulty": "Easy",
+			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				f"• Point 1 [1 Mark]: Precise definition of {topic} role in runtime coordination.\n"
-				f"• Point 2 [1 Mark]: Technical justification citing {bullet[:80]}."
+				f"• Point 1 [1 Mark]: Correctly identifies primary specification ({bullet[:60]}).\n"
+				f"• Point 2 [1 Mark]: Explains execution constraint or state validation requirement."
 			),
-			"solution": f"1. {topic} coordinates runtime state according to curriculum standards.\n2. It guarantees execution safety by ensuring {bullet[:90]}.",
+			"solution": f"1. Principle: Ensures conformity with {bullet[:80]}.\n2. Validation: Guarantees isolated and repeatable state transitions.",
 			"internal_choice_question": None,
 		}
 	elif marks == 3:
 		return {
 			"question_number": q_num,
-			"question": f"Explain the workflow and execution mechanics of {topic}.",
-			"correct_answer": f"{topic} manages structured processing through initialization, state verification, and safe resource release.",
+			"question": f"Explain the architectural significance and practical implementation of {topic} in modern systems.",
+			"correct_answer": f"Definition of {topic}, adherence to {bullet[:60]}, and prevention of state corruption.",
 			"marks": 3,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				f"• Point 1 [1 Mark]: Core conceptual purpose of {topic} in the system.\n"
+				f"• Point 1 [1 Mark]: Conceptual definition and role of {topic}.\n"
 				f"• Point 2 [1 Mark]: Operational workflow and adherence to {bullet[:70]}.\n"
 				f"• Point 3 [1 Mark]: Practical advantages, fault tolerance, and trade-off considerations."
 			),
@@ -337,6 +399,647 @@ def _synthesize_extra_question(
 				"solution": "Full credit awarded for detailed trade-off matrix analyzing latency curves, memory overhead, and maintenance complexity.",
 			},
 		}
+
+
+def _build_dynamic_content_pools(content_text: str, headings: List[str], bullets: List[str], source_tag: str):
+	"""Builds dynamic pools from parsed content text if no static domain pool is matched."""
+	if not headings and not bullets:
+		return [], [], [], [], []
+
+	pool_a = []
+	for i, h in enumerate(headings[:20]):
+		b = bullets[i % max(1, len(bullets))] if bullets else "standard curriculum principles"
+		pool_a.append(_synthesize_extra_question(str(i + 1), 1, "MCQ", h, b, source_tag))
+
+	pool_b = []
+	for i, h in enumerate(headings[:10]):
+		b = bullets[(i + 1) % max(1, len(bullets))] if bullets else "execution state"
+		pool_b.append(_synthesize_extra_question(str(i + 1), 2, "Short Answer", h, b, source_tag))
+
+	pool_c = []
+	for i, h in enumerate(headings[:10]):
+		b = bullets[(i + 2) % max(1, len(bullets))] if bullets else "architectural specification"
+		pool_c.append(_synthesize_extra_question(str(i + 1), 3, "Short Answer", h, b, source_tag))
+
+	pool_d = []
+	for i, h in enumerate(headings[:5]):
+		b = bullets[(i + 3) % max(1, len(bullets))] if bullets else "system lifecycle"
+		pool_d.append(_synthesize_extra_question(str(i + 1), 5, "Long Answer", h, b, source_tag))
+
+	pool_e = []
+	for i, h in enumerate(headings[:5]):
+		b = bullets[(i + 4) % max(1, len(bullets))] if bullets else "production scenario"
+		pool_e.append(_synthesize_extra_question(str(i + 1), 4, "Application-Based", h, b, source_tag))
+
+	return pool_a, pool_b, pool_c, pool_d, pool_e
+
+
+# =====================================================================
+# JAVA & OOP QUESTION POOL (Grounded in Java Course & Batch Syllabus)
+# =====================================================================
+
+def _get_java_mcq_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Who led the Sun Microsystems 'Green Team' in 1991 that created the technology that became Java?",
+			"options": ["(A) Dennis Ritchie", "(B) James Gosling", "(C) Guido van Rossum", "(D) Bjarne Stroustrup"],
+			"correct_answer": "(B) James Gosling",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) James Gosling. Evaluation Criterion: Full 1 mark awarded for identifying James Gosling, who led the Sun Microsystems Green Team (including Mike Sheridan and Patrick Naughton) in 1991 and is celebrated as the 'Father of Java'.",
+			"solution": "James Gosling led the Green Team at Sun Microsystems starting in 1991. Dennis Ritchie created C, Guido van Rossum created Python, and Bjarne Stroustrup created C++.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What was the original name of the Java programming language before it was renamed due to trademark issues?",
+			"options": ["(A) Oak", "(B) Silk", "(C) Dynamic", "(D) CoffeeScript"],
+			"correct_answer": "(A) Oak",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (A) Oak. Evaluation Criterion: Full 1 mark awarded for recognizing that James Gosling originally named the language 'Oak' after an oak tree standing outside his office window, later renamed to Java after Indonesian espresso beans.",
+			"solution": "Java was originally called 'Oak'. It was renamed to 'Java' because Oak was already trademarked by another company.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What does the foundational architectural philosophy of Java, 'WORA', stand for?",
+			"options": ["(A) Write Once, Run Anywhere", "(B) Windows Oriented Runtime Architecture", "(C) Web Optimized Resource Allocation", "(D) Wireless Operation and Remote Access"],
+			"correct_answer": "(A) Write Once, Run Anywhere",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (A) Write Once, Run Anywhere. Evaluation Criterion: Full 1 mark awarded for stating the exact expansion of WORA, reflecting Java's bytecode platform independence.",
+			"solution": "Java code is compiled into bytecode (.class), which can run on any system that has a Java Virtual Machine (JVM), enabling 'Write Once, Run Anywhere'.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which virtual execution environment interprets or compiles Java bytecode into native machine instructions?",
+			"options": ["(A) Java Virtual Machine (JVM)", "(B) Common Language Runtime (CLR)", "(C) V8 Engine", "(D) Android NDK"],
+			"correct_answer": "(A) Java Virtual Machine (JVM)",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (A) Java Virtual Machine (JVM). Evaluation Criterion: Full 1 mark awarded for identifying the JVM as the abstract computing machine that executes compiled Java bytecode.",
+			"solution": "The JVM (Java Virtual Machine) loads, verifies, and executes Java bytecode, providing hardware independence and automatic memory management.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "In which year was the first official Java Development Kit (JDK 1.0) publicly released by Sun Microsystems?",
+			"options": ["(A) 1991", "(B) 1995", "(C) 1996", "(D) 2000"],
+			"correct_answer": "(C) 1996",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (C) 1996. Evaluation Criterion: Full 1 mark awarded for identifying 1996 as the release year of JDK 1.0 following its public debut in 1995.",
+			"solution": "Java debuted publicly in 1995 and Sun Microsystems released the official JDK 1.0 in 1996. Sun was later acquired by Oracle in 2010.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which corporation acquired Sun Microsystems in 2010, assuming stewardship of Java development?",
+			"options": ["(A) Microsoft Corporation", "(B) IBM", "(C) Oracle Corporation", "(D) Google LLC"],
+			"correct_answer": "(C) Oracle Corporation",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (C) Oracle Corporation. Evaluation Criterion: Full 1 mark awarded for naming Oracle Corporation as the acquiring entity in 2010.",
+			"solution": "Oracle Corporation acquired Sun Microsystems in January 2010, taking over the stewardship and ongoing development of Java and MySQL.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What is the mandatory method signature required for the runtime entry point of a standalone Java application?",
+			"options": ["(A) public static void main(String[] args)", "(B) public void main(String args)", "(C) static int main(String[] argv)", "(D) public abstract void start()"],
+			"correct_answer": "(A) public static void main(String[] args)",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (A) public static void main(String[] args). Evaluation Criterion: Full 1 mark awarded for identifying the exact access modifier, static keyword, void return, and String array parameters.",
+			"solution": "The JVM looks for `public static void main(String[] args)` to start executing a Java program without having to instantiate the containing class first.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which punctuation character must be placed at the end of every executable statement in Java?",
+			"options": ["(A) Colon (:)", "(B) Semicolon (;)", "(C) Period (.)", "(D) Ampersand (&)"],
+			"correct_answer": "(B) Semicolon (;)",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Semicolon (;). Evaluation Criterion: Full 1 mark awarded for recognizing that Java enforces statement termination with a semicolon (;).",
+			"solution": "Java syntax strictly mandates that each statement ends with a semicolon (;). Code blocks are wrapped with curly braces ({}).",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which of the following represents a primitive data type in Java rather than a reference type?",
+			"options": ["(A) String", "(B) Integer", "(C) int", "(D) ArrayList"],
+			"correct_answer": "(C) int",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (C) int. Evaluation Criterion: Full 1 mark awarded for identifying `int` as a built-in 32-bit primitive type, whereas String, Integer, and ArrayList are reference types.",
+			"solution": "Java has 8 primitive data types: byte, short, int, long, float, double, char, and boolean. Classes like String and Integer wrapper are reference types.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What is the built-in Java standard output statement used to print a line of text to the console?",
+			"options": ["(A) Console.WriteLine()", "(B) echo()", "(C) System.out.println()", "(D) print_line()"],
+			"correct_answer": "(C) System.out.println()",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (C) System.out.println(). Evaluation Criterion: Full 1 mark awarded for identifying `System.out.println()` from the java.lang package.",
+			"solution": "`System.out.println()` prints the argument passed to standard output and advances the cursor to the next line.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which OOP pillar involves bundling variables and methods together while hiding internal object state using private access modifiers?",
+			"options": ["(A) Inheritance", "(B) Encapsulation", "(C) Polymorphism", "(D) Compilation"],
+			"correct_answer": "(B) Encapsulation",
+			"marks": 1,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Encapsulation. Evaluation Criterion: Full 1 mark awarded for defining Encapsulation as data hiding via private fields accessed exclusively through public getters and setters.",
+			"solution": "Encapsulation binds data and code into a single unit (class) and restricts direct unauthorized manipulation of internal fields.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which Java keyword is used by a derived child class to inherit fields and methods from a parent class?",
+			"options": ["(A) implements", "(B) extends", "(C) inherits", "(D) superclass"],
+			"correct_answer": "(B) extends",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) extends. Evaluation Criterion: Full 1 mark awarded for identifying `extends` for class inheritance (`implements` is used for interfaces).",
+			"solution": "In Java, classes use `extends` for single class inheritance and `implements` to realize interface contracts.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What is the key difference between Method Overloading and Method Overriding in Java?",
+			"options": [
+				"(A) Overloading occurs in the same class with different parameter lists; Overriding occurs in a subclass with an identical signature",
+				"(B) Overloading requires static methods while Overriding requires private methods",
+				"(C) Overloading is resolved at runtime while Overriding is resolved at compile time",
+				"(D) Overloading applies exclusively to abstract methods",
+			],
+			"correct_answer": "(A) Overloading occurs in the same class with different parameter lists; Overriding occurs in a subclass with an identical signature",
+			"marks": 1,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (A). Evaluation Criterion: Full 1 mark awarded for clearly differentiating compile-time method overloading from runtime dynamic polymorphism via overriding.",
+			"solution": "Method overloading provides multiple methods with the same name but different signatures within the same class. Method overriding redefines a parent method in a subclass with matching signature.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "According to the Java Batch syllabus, who is the designated lead instructor for the intensive 3-month online batch?",
+			"options": ["(A) James Gosling", "(B) Vikas S", "(C) Guido van Rossum", "(D) Patrick Naughton"],
+			"correct_answer": "(B) Vikas S",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Vikas S. Evaluation Criterion: Full 1 mark awarded for identifying Vikas S as documented in the LMS Java batch schedule.",
+			"solution": "The Java Batch details explicitly list Vikas S as the lead instructor for the August–November 2026 batch.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What are the scheduled daily timings for the online Java programming batch?",
+			"options": ["(A) 06:00 AM to 12:00 PM", "(B) 09:30 AM to 06:00 PM (IST)", "(C) 02:00 PM to 08:00 PM", "(D) 08:00 PM to 11:00 PM"],
+			"correct_answer": "(B) 09:30 AM to 06:00 PM (IST)",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) 09:30 AM to 06:00 PM (IST). Evaluation Criterion: Full 1 mark awarded for matching the batch schedule specifications.",
+			"solution": "The Java batch schedule is set to 09:30 AM to 06:00 PM Asia/Kolkata (IST).",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which module of the Java Batch curriculum covers multithreading, exception handling, and the Java Collections Framework?",
+			"options": ["(A) Module 1: Java Fundamentals", "(B) Module 2: OOP Principles", "(C) Module 3: Advanced Core Concepts", "(D) Module 4: Real-World Application"],
+			"correct_answer": "(C) Module 3: Advanced Core Concepts",
+			"marks": 1,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (C) Module 3: Advanced Core Concepts. Evaluation Criterion: Full 1 mark awarded for identifying Module 3 as covering advanced core Java concepts.",
+			"solution": "Module 3 covers exception handling, multithreading, Collections, and file I/O operations.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which Java API standard is introduced in Module 4 to connect Java applications with relational database management systems?",
+			"options": ["(A) JDBC (Java Database Connectivity)", "(B) JPA Hibernate", "(C) JNDI Directory Service", "(D) ODBC Driver"],
+			"correct_answer": "(A) JDBC (Java Database Connectivity)",
+			"marks": 1,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (A) JDBC (Java Database Connectivity). Evaluation Criterion: Full 1 mark awarded for identifying JDBC as the standard API for database connectivity in Java.",
+			"solution": "Module 4 focuses on clean code practices and basic database connectivity using JDBC (Java Database Connectivity).",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which Java keyword is placed on a code block to guarantee execution regardless of whether an exception is thrown or caught?",
+			"options": ["(A) catch", "(B) throw", "(C) finally", "(D) assert"],
+			"correct_answer": "(C) finally",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (C) finally. Evaluation Criterion: Full 1 mark awarded for identifying `finally` as the cleanup block that always executes.",
+			"solution": "A `finally` block executes after `try` and `catch` blocks complete, ensuring resources like file handles or database connections are closed.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which interface from the Java Collections Framework represents an ordered sequence allowing duplicate elements and indexed access?",
+			"options": ["(A) java.util.Set", "(B) java.util.List", "(C) java.util.Map", "(D) java.util.Queue"],
+			"correct_answer": "(B) java.util.List",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) java.util.List. Evaluation Criterion: Full 1 mark awarded for identifying `List` as the ordered collection interface supporting index-based operations.",
+			"solution": "The `List` interface (implemented by ArrayList and LinkedList) maintains an ordered sequence of elements and permits duplicates.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What runtime component automatically reclaims heap memory occupied by objects that are no longer reachable by any active thread reference?",
+			"options": ["(A) Class Loader", "(B) Garbage Collector (GC)", "(C) JIT Compiler", "(D) Bytecode Verifier"],
+			"correct_answer": "(B) Garbage Collector (GC)",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Garbage Collector (GC). Evaluation Criterion: Full 1 mark awarded for identifying the JVM Garbage Collector as responsible for automatic memory deallocation.",
+			"solution": "The JVM's Garbage Collector identifies unreachable objects in heap memory and automatically reclaims that memory to prevent memory leaks.",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_java_vsa_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Differentiate between JDK, JRE, and JVM in the Java execution environment.",
+			"correct_answer": "JVM executes bytecode. JRE contains JVM and runtime libraries. JDK contains JRE plus development tools like javac and debugger.",
+			"marks": 2,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: JVM defines the virtual machine executing bytecode; JRE provides libraries + JVM for execution.\n"
+				"• Point 2 [1 Mark]: JDK is the full development kit providing compiler (javac), archiver (jar), and JRE."
+			),
+			"solution": "JVM (Java Virtual Machine) runs bytecode. JRE (Java Runtime Environment) = JVM + core classes. JDK (Java Development Kit) = JRE + compiler tools.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "State the two primary syntax rules regarding class names and statement termination in Java.",
+			"correct_answer": "1. Class names must begin with an uppercase letter. 2. Every executable statement must terminate with a semicolon (;).",
+			"marks": 2,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Identifies PascalCase naming convention for classes (e.g. `public class Main`).\n"
+				"• Point 2 [1 Mark]: States mandatory semicolon (;) statement termination."
+			),
+			"solution": "In Java, classes follow UpperCamelCase convention and statements must terminate with a semicolon.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Explain the difference between primitive data types and reference types in Java memory allocation.",
+			"correct_answer": "Primitive types hold their values directly on the stack; reference types store memory references on the stack pointing to objects allocated on the heap.",
+			"marks": 2,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Explains that 8 primitive types (int, double, boolean, etc.) store actual values in stack frames.\n"
+				"• Point 2 [1 Mark]: Explains that reference types (Objects, Arrays, Strings) hold heap addresses."
+			),
+			"solution": "Primitives store values directly in stack memory. Reference variables store references (addresses) to instances on the heap.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "List the four fundamental pillars of Object-Oriented Programming (OOP) covered in Module 2 of the Java curriculum.",
+			"correct_answer": "1. Encapsulation, 2. Inheritance, 3. Polymorphism, 4. Abstraction.",
+			"marks": 2,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Names Encapsulation and Inheritance correctly.\n"
+				"• Point 2 [1 Mark]: Names Polymorphism and Abstraction correctly."
+			),
+			"solution": "The four pillars of OOP in Java are Encapsulation (data hiding), Inheritance (code reuse), Polymorphism (multiple forms), and Abstraction (hiding implementation details).",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Distinguish between the `==` comparison operator and the `.equals()` method when comparing objects in Java.",
+			"correct_answer": "`==` compares memory references (addresses), while `.equals()` compares actual value content of objects.",
+			"marks": 2,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Identifies `==` as reference identity check (same memory location).\n"
+				"• Point 2 [1 Mark]: Identifies `.equals()` as semantic value equivalence check (when overridden, as in String)."
+			),
+			"solution": "`==` tests if two references point to the exact same object in memory. `.equals()` tests if the state/content of two objects is logically equal.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "According to the Java Batch structure, state the scheduled delivery mode and total seat capacity.",
+			"correct_answer": "Delivery mode is 100% Online, and class size is strictly capped at 50 seats for personalized support.",
+			"marks": 2,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Delivery mode: 100% Online.\n"
+				"• Point 2 [1 Mark]: Class size limit: exactly 50 seats."
+			),
+			"solution": "The Java Batch details confirm 100% online delivery and a strict cap of 50 students.",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_java_short_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Explain the WORA (Write Once, Run Anywhere) paradigm in Java. Detail how bytecode and the JVM enable platform independence.",
+			"correct_answer": "Java source code is compiled by javac into intermediate bytecode (.class). Any platform with a JVM can execute this bytecode without recompiling.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Compilation stage: javac translates .java source files into architecture-neutral bytecode.\n"
+				"• Point 2 [1 Mark]: JVM execution: The platform-specific Java Virtual Machine interprets or JIT-compiles bytecode into native machine code.\n"
+				"• Point 3 [1 Mark]: Platform independence: The same compiled .class file executes uniformly across Windows, Linux, and macOS."
+			),
+			"solution": "1. Java compiler (javac) transforms source code into bytecode rather than machine code.\n2. Each OS has a platform-specific JVM that reads the identical bytecode.\n3. This decouples software development from target hardware architectures.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Explain the concept and implementation of Encapsulation in Java using private instance fields and public getter/setter methods.",
+			"correct_answer": "Private fields restrict direct access; public getters and setters provide controlled access with validation.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Principle of data hiding: Declaring class member variables as `private`.\n"
+				"• Point 2 [1 Mark]: Access control: Providing `public` getter and setter methods to inspect and modify fields.\n"
+				"• Point 3 [1 Mark]: Validation & integrity: Demonstrates how setters enforce business rules and prevent invalid state."
+			),
+			"solution": "Encapsulation protects object state by restricting field access to class methods. Getters return values and setters validate input before updating private fields.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Compare `ArrayList` and `LinkedList` in the Java Collections Framework regarding internal data structures and performance trade-offs.",
+			"correct_answer": "ArrayList uses a dynamic resizable array with O(1) random access; LinkedList uses a doubly-linked node chain with O(1) insertions/deletions at ends.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Structural layout: ArrayList uses contiguous array buffers; LinkedList uses doubly-linked nodes.\n"
+				"• Point 2 [1 Mark]: Random access complexity: ArrayList offers O(1) index access vs LinkedList's O(n) traversal.\n"
+				"• Point 3 [1 Mark]: Insertion/Deletion complexity: LinkedList offers O(1) node insertion vs ArrayList's O(n) element shifting."
+			),
+			"solution": "ArrayList is superior for frequent lookups and read-heavy workloads. LinkedList is preferred when frequent element insertions and deletions occur at list boundaries.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Explain Method Overriding in Java. What is the significance of the `@Override` annotation and dynamic method dispatch?",
+			"correct_answer": "Subclass redefines superclass method with matching signature. @Override enables compiler verification, and JVM resolves execution at runtime via dynamic dispatch.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Definition: Subclass implements parent method with identical name, parameter types, and return type.\n"
+				"• Point 2 [1 Mark]: Role of `@Override`: Tells compiler to verify that the method actually exists in the superclass.\n"
+				"• Point 3 [1 Mark]: Runtime dispatch: JVM determines the method to execute based on actual object instance on the heap, not reference type."
+			),
+			"solution": "Method overriding provides subclass-specific behavior for inherited methods. Dynamic method dispatch determines method execution polymorphically at runtime.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Describe the lifecycle states of a thread in Java from creation to termination.",
+			"correct_answer": "New -> Runnable -> Blocked/Waiting/Timed Waiting -> Terminated.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: New & Runnable states: Thread created via `new Thread()` and transitioned to Runnable upon `start()`.\n"
+				"• Point 2 [1 Mark]: Waiting/Blocked states: Thread temporarily suspended waiting for locks or I/O.\n"
+				"• Point 3 [1 Mark]: Terminated state: Thread completes execution of its `run()` method."
+			),
+			"solution": "Java threads move through NEW, RUNNABLE, BLOCKED, WAITING, TIMED_WAITING, and TERMINATED states managed by the JVM thread scheduler.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Explain the role and syntax of the `try-catch-finally` construct in Java exception handling.",
+			"correct_answer": "Try encloses risky code, catch handles specific exceptions, and finally guarantees execution of cleanup routines.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: `try` block: Isolates executable code that may throw checked or unchecked exceptions.\n"
+				"• Point 2 [1 Mark]: `catch` block: Traps and resolves designated exception types without crashing the application.\n"
+				"• Point 3 [1 Mark]: `finally` block: Executes unconditionally for resource reclamation."
+			),
+			"solution": "The try-catch-finally pattern enables robust error recovery while ensuring critical resources (connections, files) are closed deterministically.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Outline the four core modules comprising the 3-month Java Batch curriculum and summarize their primary learning objectives.",
+			"correct_answer": "Module 1: Fundamentals, Module 2: OOP Principles, Module 3: Advanced Core Concepts, Module 4: Real-World Applications & JDBC.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Module 1 (Syntax, data types, control flow, loops, arrays) and Module 2 (Classes, inheritance, polymorphism, encapsulation).\n"
+				"• Point 2 [1 Mark]: Module 3 (Exception handling, multithreading, Collections, file I/O).\n"
+				"• Point 3 [1 Mark]: Module 4 (Clean code, JDBC database connectivity, and building scalable applications)."
+			),
+			"solution": "The Java batch curriculum systematically progresses from basic syntax to object-oriented architecture, advanced multithreaded systems, and production database integration.",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_java_long_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Provide an in-depth architectural analysis of Object-Oriented Programming (OOP) in Java. Discuss class instantiation, single inheritance using `extends`, method overriding with `@Override`, dynamic polymorphism, and provide a clear Java code snippet demonstrating these concepts.",
+			"correct_answer": "Comprehensive breakdown of OOP in Java with class definitions, inheritance, polymorphism, and code demonstration.",
+			"marks": 5,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Theoretical Foundation & Principles [1 Mark]: Definitions of classes as blueprints, objects as instances, and single inheritance constraints.\n"
+				"• Inheritance & Subtyping [1 Mark]: Detailed explanation of `extends`, constructor chaining using `super()`, and field access.\n"
+				"• Polymorphism & Dynamic Dispatch [1 Mark]: Analysis of runtime method table lookup and interface contracts.\n"
+				"• Code Demonstration [1 Mark]: Fully syntactically valid Java code showing parent class, derived class, `@Override`, and polymorphic invocation.\n"
+				"• Best Practices & Pitfalls [1 Mark]: Avoiding deep inheritance hierarchies, composition over inheritance, and encapsulation enforcement."
+			),
+			"solution": (
+				"1. Foundation: In Java, classes model state and behavior. Instances are allocated on the heap.\n"
+				"2. Inheritance: `class Dog extends Animal` inherits state and methods. `super()` invokes parent constructor.\n"
+				"3. Polymorphism: `Animal a = new Dog(); a.makeSound();` dynamically invokes `Dog.makeSound()`.\n"
+				"4. Code:\n"
+				"   public class Animal { public void sound() { System.out.println('Generic sound'); } }\n"
+				"   public class Dog extends Animal { @Override public void sound() { System.out.println('Bark'); } }\n"
+				"5. Best Practices: Use `@Override` to catch typo errors and prefer interface composition."
+			),
+			"internal_choice_question": {
+				"question": "OR: Compare and contrast Abstract Classes and Interfaces in Java. Detail differences in multiple inheritance, method implementations (including default and static methods in Java 8+), and evaluate when software architects should prefer one over the other.",
+				"marks": 5,
+				"correct_answer": "Abstract classes support state and partial implementation with single inheritance; interfaces define contracts with multiple implementation support.",
+				"answer_key_detail": (
+					"• Conceptual Comparison [1 Mark]: Abstract classes represent 'is-a' relationships; Interfaces represent 'can-do' behavioral contracts.\n"
+					"• Multiple Inheritance & Modifiers [1 Mark]: A class can extend only one abstract class but implement multiple interfaces.\n"
+					"• Java 8+ Innovations [1 Mark]: Inclusion of `default` and `static` methods in interfaces without breaking implementations.\n"
+					"• State & Fields [1 Mark]: Abstract classes have instance fields; interface fields are implicitly `public static final`.\n"
+					"• Architectural Decision Matrix [1 Mark]: Criteria for selecting between abstract classes vs interfaces in system design."
+				),
+				"solution": "Abstract classes provide shared mutable state and default base implementations. Interfaces provide decoupled polymorphism and permit multiple inheritance of type.",
+			},
+		},
+		{
+			"question": "Analyze the Java Memory Architecture and the Garbage Collection mechanism. Distinguish between Stack memory and Heap memory, explain Young and Old generation object allocation, detail how unreachable objects are identified, and explain practices to prevent memory leaks in enterprise Java applications.",
+			"correct_answer": "Detailed explanation of Stack vs Heap, generational GC (Eden, Survivor, Tenured), mark-and-sweep, and leak prevention.",
+			"marks": 5,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Stack vs Heap Architecture [1 Mark]: Stack allocates method frames and primitive values; Heap allocates dynamic objects.\n"
+				"• Generational Heap Structure [1 Mark]: Breakdown of Young Generation (Eden, S0, S1) and Old / Tenured Generation.\n"
+				"• GC Mechanics [1 Mark]: Mark-and-sweep algorithm, reachability trees starting from GC Roots, and compaction.\n"
+				"• Minor vs Major GC [1 Mark]: Minor GC frequency on Young Generation vs Major / Full GC performance overhead on Old Gen.\n"
+				"• Memory Leak Mitigation [1 Mark]: Dereferencing obsolete references, closing streams/connections, and avoiding static collection buildup."
+			),
+			"solution": (
+				"1. Stack holds local variables and call frames; Heap stores all instantiated objects.\n"
+				"2. New objects are born in Eden. Surviving objects move between Survivor spaces before promotion to Old Gen.\n"
+				"3. Unreachable objects are marked during GC cycles and memory is swept and compacted.\n"
+				"4. To prevent leaks: Close JDBC resources, remove unneeded listeners, and avoid unbounded static collections."
+			),
+			"internal_choice_question": {
+				"question": "OR: Provide a comprehensive analysis of Java Exception Handling Architecture. Contrast Checked Exceptions vs Unchecked (Runtime) Exceptions, analyze the Throwable hierarchy, explain the use of `try-with-resources` (`AutoCloseable`), and illustrate how to design custom application exceptions.",
+				"marks": 5,
+				"correct_answer": "Throwable hierarchy, Checked vs Runtime exceptions, try-with-resources automatic closing, and custom exception implementation.",
+				"answer_key_detail": (
+					"• Hierarchy Breakdown [1 Mark]: Throwable -> Error and Exception -> RuntimeException.\n"
+					"• Checked vs Unchecked [1 Mark]: Checked verified at compile-time (IOException); Unchecked runtime (NullPointerException).\n"
+					"• Try-with-Resources [1 Mark]: Syntax and mechanics of `try (ResourceType res = new ResourceType())` implementing AutoCloseable.\n"
+					"• Custom Exception Design [1 Mark]: Subclassing Exception or RuntimeException with parameterized constructor.\n"
+					"• Error Handling Best Practices [1 Mark]: Never swallowing exceptions, logging with stack traces, and clean boundary translations."
+				),
+				"solution": "Checked exceptions represent recoverable environmental conditions. Unchecked exceptions denote programming errors. Try-with-resources guarantees deterministic cleanup.",
+			},
+		},
+		{
+			"question": "Examine the JDBC (Java Database Connectivity) architecture covered in Module 4 of the Java Batch. Detail the step-by-step pipeline required to connect a Java application to a relational database, execute parameterized queries using `PreparedStatement`, process a `ResultSet`, and manage atomic transactions using `commit()` and `rollback()`.",
+			"correct_answer": "Complete JDBC workflow: driver loading, connection pooling, PreparedStatement execution, ResultSet parsing, and transaction commit/rollback.",
+			"marks": 5,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• JDBC Architectural Layers [1 Mark]: Role of JDBC API, DriverManager, and vendor-specific JDBC Drivers.\n"
+				"• Connection & PreparedStatement Pipeline [1 Mark]: Establishing `Connection`, compiling `PreparedStatement`, and parameter binding.\n"
+				"• SQL Injection Prevention [1 Mark]: Why `PreparedStatement` parameters prevent SQL injection attacks compared to raw `Statement`.\n"
+				"• ResultSet Processing [1 Mark]: Iterating `while (rs.next())`, typed column retrieval, and mapping to Domain Transfer Objects.\n"
+				"• Transaction Management & Cleanup [1 Mark]: `setAutoCommit(false)`, explicit `commit()`, `rollback()` inside catch, and resource closing."
+			),
+			"solution": (
+				"1. Load driver and obtain `Connection` via `DriverManager.getConnection()`.\n"
+				"2. Create `PreparedStatement` with parameterized placeholders (`?`) to prevent SQL injection.\n"
+				"3. Execute query: `ResultSet rs = pstmt.executeQuery();` and extract data via `rs.getString()`, `rs.getInt()`.\n"
+				"4. Manage transaction boundaries: `con.setAutoCommit(false);` followed by `con.commit()` or `con.rollback()` on error.\n"
+				"5. Clean up all resources in `finally` or use try-with-resources."
+			),
+			"internal_choice_question": {
+				"question": "OR: Analyze Multithreading and Concurrency in Java as covered in Module 3. Explain thread creation using `Thread` vs `Runnable`, evaluate race conditions and critical sections, detail the working of the `synchronized` keyword and object monitor locks, and describe the advantages of the `java.util.concurrent` Executor framework.",
+				"marks": 5,
+				"correct_answer": "Thread vs Runnable, race conditions, synchronized blocks, monitor locks (wait/notify), and ExecutorService thread pooling.",
+				"answer_key_detail": (
+					"• Thread Creation Paradigms [1 Mark]: Extending `Thread` vs implementing `Runnable` / `Callable`.\n"
+					"• Concurrency Pitfalls [1 Mark]: Definition of race conditions, shared mutable state, and thread starvation.\n"
+					"• Synchronization Mechanics [1 Mark]: Intrinsic locks (monitors), `synchronized` methods/blocks, and atomic memory visibility.\n"
+					"• Inter-Thread Communication [1 Mark]: Protocol of `wait()`, `notify()`, and `notifyAll()` within synchronized blocks.\n"
+					"• Modern Concurrency Utilities [1 Mark]: Benefits of `ExecutorService`, thread reuse, and preventing thread exhaustion."
+				),
+				"solution": "Implementing `Runnable` provides superior flexibility over subclassing `Thread`. Intrinsic locks protect critical sections, while `ExecutorService` pools threads efficiently.",
+			},
+		},
+	]
+
+
+def _get_java_application_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Case Study: An enterprise banking application in Java handles simultaneous funds transfer requests across customer accounts. Under peak load, concurrent thread execution produces corrupted account balances due to uncoordinated access to shared account objects. Formulate a technical diagnosis of the concurrency defect and design a robust thread-safe synchronization strategy using synchronized blocks or `ReentrantLock`.",
+			"correct_answer": "Diagnosis of race condition on shared mutable balance. Remediation using synchronized blocks on account objects with consistent lock ordering to prevent deadlock.",
+			"marks": 4,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Sub-part (a) Problem Diagnosis [2 Marks]: Correctly identifies race conditions caused by non-atomic read-modify-write operations on shared balance fields.\n"
+				"• Sub-part (b) Technical Remediation [2 Marks]: Implementation of intrinsic lock synchronization with strict global lock ordering (e.g. by account ID) to eliminate deadlock."
+			),
+			"solution": (
+				"Part (a): Balance decrement and increment operations are not atomic at the CPU level. Interleaved thread execution causes lost updates.\n"
+				"Part (b): Enforce thread safety by acquiring locks on both source and destination accounts in consistent numerical ID order using `synchronized` blocks or `ReentrantLock`."
+			),
+			"internal_choice_question": {
+				"question": "OR: Case Study: A high-throughput Java payment service experiences intermittent connection drops while communicating with an external database. Design an atomic database transaction workflow using JDBC that ensures funds are never debited if the ledger credit operation fails.",
+				"marks": 4,
+				"correct_answer": "Implementation of manual transaction boundaries (`con.setAutoCommit(false)`) with rollback in exception handlers.",
+				"answer_key_detail": (
+					"• Sub-part (a) Failure Mode Analysis [2 Marks]: Identification of partial state update risks when autocommit is enabled.\n"
+					"• Sub-part (b) Transaction Workflow Implementation [2 Marks]: Explicit transaction boundary management with `setAutoCommit(false)`, `commit()`, and `rollback()` in catch block."
+				),
+				"solution": "Disable autocommit on the database connection. Execute both debit and credit prepared statements within a single try block. Call `con.commit()` upon success, and invoke `con.rollback()` inside the catch block on failure.",
+			},
+		},
+		{
+			"question": "Case Study: A student enrollment portal for the Java Batch (capped at 50 seats) requires maintaining registered student records. The system must prevent duplicate registrations by student ID, allow rapid lookup by ID, and support sorting students alphabetically by name for reporting. Evaluate Java Collection interfaces (`List`, `Set`, `Map`) and formulate an optimal collection architecture for this system.",
+			"correct_answer": "Use `Map<String, Student>` (e.g. HashMap or ConcurrentHashMap) for O(1) duplicate checks and lookup, and `TreeSet` or `ArrayList` with `Comparator` for sorted output.",
+			"marks": 4,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Sub-part (a) Collection Evaluation [2 Marks]: Analysis of Set (uniqueness), Map (keyed access), and List (ordered sequence) trade-offs.\n"
+				"• Sub-part (b) Architectural Strategy [2 Marks]: Recommendation of a primary `Map<String, Student>` for O(1) duplicate check/lookup combined with a custom `Comparator<Student>` for sorted export."
+			),
+			"solution": (
+				"Part (a): A plain List requires O(n) scan to detect duplicates. A HashSet enforces uniqueness but lacks fast key-to-object lookup.\n"
+				"Part (b): Maintain a `HashMap<String, Student>` where studentId is the key. To export sorted reports, wrap `new ArrayList<>(map.values())` and sort with `Comparator.comparing(Student::getName)`."
+			),
+			"internal_choice_question": {
+				"question": "OR: Case Study: An enterprise Java log ingestion engine must process large log files (exceeding 2 GB) without encountering `java.lang.OutOfMemoryError: Java heap space`. Design a streaming I/O pipeline using `BufferedReader` and evaluate its memory efficiency compared to loading full file content.",
+				"marks": 4,
+				"correct_answer": "Stream lines iteratively using `BufferedReader.readLine()` or `Files.lines()` with constant O(1) heap footprint.",
+				"answer_key_detail": (
+					"• Sub-part (a) Root Cause Analysis [2 Marks]: Demonstrates why loading entire files into memory strings exhausts the JVM heap.\n"
+					"• Sub-part (b) Streaming Implementation [2 Marks]: Implementation of buffered line-by-line streaming with automatic resource disposal via try-with-resources."
+				),
+				"solution": "Use `try (BufferedReader br = new BufferedReader(new FileReader(file)))` and process each line sequentially with `while ((line = br.readLine()) != null)`. This maintains constant O(1) memory overhead regardless of file size.",
+			},
+		},
+		{
+			"question": "Case Study: A software architecture team is building an extensible e-commerce platform in Java. The system must support diverse payment providers (Credit Card, PayPal, UPI) without modifying existing checkout business logic. Formulate a decoupled architecture using Java Interfaces adhering to the Open/Closed Principle.",
+			"correct_answer": "Define `PaymentProcessor` interface with `processPayment()` method. Concrete payment classes implement the interface, and checkout client depends on the abstraction.",
+			"marks": 4,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Sub-part (a) Architectural Design [2 Marks]: Definition of the `PaymentProcessor` interface and decoupling of checkout service from concrete implementations.\n"
+				"• Sub-part (b) Extensibility & SOLID Compliance [2 Marks]: Demonstration of adding new payment providers without modifying existing checkout code."
+			),
+			"solution": (
+				"Part (a): Declare `public interface PaymentProcessor { boolean pay(double amount); }`.\n"
+				"Part (b): Create `CreditCardProcessor`, `UPIProcessor`, and `PayPalProcessor` implementing this interface. The `OrderService` accepts any `PaymentProcessor` via constructor dependency injection.",
+			),
+			"internal_choice_question": {
+				"question": "OR: Case Study: A Java microservice receives JSON payloads and must validate mandatory fields before processing. Design an exception-handling pipeline featuring custom unchecked exceptions and a global exception controller mapping errors to standardized HTTP responses.",
+				"marks": 4,
+				"correct_answer": "Custom `ValidationException` subclassing `RuntimeException` with field-level error mappings and central exception handler.",
+				"answer_key_detail": (
+					"• Sub-part (a) Custom Exception Architecture [2 Marks]: Implementation of `ValidationException` extending RuntimeException with metadata.\n"
+					"• Sub-part (b) Error Translation Pipeline [2 Marks]: Structured extraction of invalid fields and formatting into standardized JSON error responses."
+				),
+				"solution": "Define `ValidationException extends RuntimeException` holding field names and validation messages. Wrap service invocation in an error controller that intercepts validation exceptions and maps them to HTTP 400 Bad Request.",
+			},
+		},
+	]
 
 
 # =====================================================================
@@ -451,118 +1154,118 @@ def _get_python_mcq_pool(source_tag: str) -> List[Dict[str, Any]]:
 			"marks": 1,
 			"difficulty": "Medium",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Context Management Protocol. Evaluation Criterion: Full 1 mark awarded for identifying context managers using __enter__ and __exit__ methods to guarantee deterministic cleanup.",
-			"solution": "The `with` statement binds execution to a context manager. Its `__enter__()` executes upon entry and `__exit__()` is guaranteed to run upon leaving, even if exceptions occur.",
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Context Management Protocol. Evaluation Criterion: Full 1 mark awarded for identifying the Context Management Protocol implemented via `__enter__` and `__exit__` dunder methods.",
+			"solution": "The `with` statement guarantees cleanup actions upon exiting a code block by automatically invoking `__enter__()` upon entry and `__exit__()` upon termination.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "In Django's MVT architectural pattern, what role is fulfilled by the 'View' component?",
-			"options": ["(A) Direct rendering of HTML markup and CSS styles", "(B) Database table schema declaration and ORM mapping", "(C) Business logic execution and HTTP request/response processing", "(D) DNS address resolution for client connections"],
-			"correct_answer": "(C) Business logic execution and HTTP request/response processing",
-			"marks": 1,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (C) Business logic execution and HTTP request/response processing. Evaluation Criterion: Full 1 mark awarded for specifying that Django Views accept HttpRequest objects and return HttpResponse objects.",
-			"solution": "In Django MVT, Models define the data layer, Templates handle presentation, and Views contain the business logic that queries the models and renders templates or returns JSON.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the average time complexity of searching for a key in a Python dictionary?",
-			"options": ["(A) O(1)", "(B) O(log n)", "(C) O(n)", "(D) O(n log n)"],
-			"correct_answer": "(A) O(1)",
-			"marks": 1,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (A) O(1). Evaluation Criterion: Full 1 mark awarded for stating that hash table lookups provide amortized constant O(1) time complexity.",
-			"solution": "Python dictionaries are implemented using sparse hash tables with open addressing, providing amortized O(1) average time complexity for key lookups, insertions, and deletions.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Which method is used in Python to safely remove and return an element from a dictionary without raising a KeyError if absent?",
-			"options": ["(A) remove()", "(B) pop()", "(C) discard()", "(D) delete()"],
-			"correct_answer": "(B) pop()",
+			"question": "In Python Full Stack development, which architectural pattern does the Django web framework follow?",
+			"options": ["(A) Model-View-Controller (MVC)", "(B) Model-View-Template (MVT)", "(C) Presentation-Abstraction-Control (PAC)", "(D) Entity-Component-System (ECS)"],
+			"correct_answer": "(B) Model-View-Template (MVT)",
 			"marks": 1,
 			"difficulty": "Easy",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) pop(). Evaluation Criterion: Full 1 mark awarded for identifying `dict.pop(key, default)` which returns the default value if the key does not exist.",
-			"solution": "`dict.pop(key, default)` removes and returns the value for `key`. If `key` is missing and a default argument is provided, the default is returned instead of raising a KeyError.",
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Model-View-Template (MVT). Evaluation Criterion: Full 1 mark awarded for identifying Django's MVT architectural pattern.",
+			"solution": "Django uses MVT: Model (database access), View (business logic and HTTP handling), and Template (HTML rendering).",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "What does the `*args` syntax in a Python function parameter list represent?",
-			"options": ["(A) A keyword dictionary of optional arguments", "(B) A tuple of arbitrary positional arguments", "(C) A pointer to external memory", "(D) A mandatory keyword-only parameter"],
-			"correct_answer": "(B) A tuple of arbitrary positional arguments",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) A tuple of arbitrary positional arguments. Evaluation Criterion: Full 1 mark awarded for recognizing *args captures extra positional arguments into an immutable tuple.",
-			"solution": "The `*` unpacking operator in a function definition collects all surplus positional arguments passed to the function into a tuple named `args`.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the primary purpose of the `Global Interpreter Lock (GIL)` in CPython?",
-			"options": ["(A) To prevent syntax errors during runtime compilation", "(B) To ensure thread-safe memory management by allowing only one thread to execute Python bytecode at a time", "(C) To restrict user programs from writing to disk without permissions", "(D) To accelerate mathematical matrix operations"],
-			"correct_answer": "(B) To ensure thread-safe memory management by allowing only one thread to execute Python bytecode at a time",
-			"marks": 1,
-			"difficulty": "Hard",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) To ensure thread-safe memory management by allowing only one thread to execute Python bytecode at a time. Evaluation Criterion: Full 1 mark awarded for explaining GIL synchronization of CPython's reference-counted memory manager.",
-			"solution": "CPython's GIL is a mutual-exclusion lock preventing multiple native threads from executing Python bytecodes concurrently, safeguarding reference counters from race conditions.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Which HTTP status code signifies that a requested resource was successfully created on the server?",
+			"question": "Which HTTP status code signifies that a client request was successfully processed and a new resource was created on the server?",
 			"options": ["(A) 200 OK", "(B) 201 Created", "(C) 204 No Content", "(D) 301 Moved Permanently"],
 			"correct_answer": "(B) 201 Created",
 			"marks": 1,
 			"difficulty": "Easy",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) 201 Created. Evaluation Criterion: Full 1 mark awarded for identifying HTTP 201 Created as the standard response for successful POST creation requests.",
-			"solution": "HTTP 201 Created indicates that the request has succeeded and led to the creation of a new resource, typically including a Location header pointing to the new URI.",
+			"answer_key_detail": "[1 Mark] Correct Option: (B) 201 Created. Evaluation Criterion: Full 1 mark awarded for identifying HTTP 201 Created as the standard REST response for resource creation.",
+			"solution": "HTTP 200 means success, HTTP 201 indicates a resource was successfully created (typically following a POST request), and 204 means success with no message body.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "In CSS, what components comprise the standard Box Model from the innermost layer outwards?",
-			"options": ["(A) Content, Padding, Border, Margin", "(B) Margin, Border, Padding, Content", "(C) Content, Border, Padding, Outline", "(D) Padding, Content, Margin, Shadow"],
-			"correct_answer": "(A) Content, Padding, Border, Margin",
+			"question": "Which modern JavaScript (ES6+) feature allows unpacking values from arrays or properties from objects into distinct variables?",
+			"options": ["(A) Currying", "(B) Destructuring Assignment", "(C) Hoisting", "(D) Event Bubbling"],
+			"correct_answer": "(B) Destructuring Assignment",
 			"marks": 1,
 			"difficulty": "Easy",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (A) Content, Padding, Border, Margin. Evaluation Criterion: Full 1 mark awarded for stating the correct nested sequence of CSS box model layers.",
-			"solution": "The CSS box model consists of the inner Content area, surrounded by Padding (space inside the border), Border (boundary line), and Margin (clear space outside the border).",
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Destructuring Assignment. Evaluation Criterion: Full 1 mark awarded for identifying destructuring syntax `const { a, b } = obj`.",
+			"solution": "Destructuring assignment allows extracting fields directly from objects or arrays into variables cleanly.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Which Git command is used to combine changes from a specified branch into the currently checked-out branch?",
-			"options": ["(A) git checkout", "(B) git merge", "(C) git fetch", "(D) git rebase --abort"],
-			"correct_answer": "(B) git merge",
+			"question": "Which relational database engine is commonly bundled with Django by default for lightweight local development?",
+			"options": ["(A) PostgreSQL", "(B) SQLite", "(C) MariaDB", "(D) MongoDB"],
+			"correct_answer": "(B) SQLite",
 			"marks": 1,
 			"difficulty": "Easy",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) git merge. Evaluation Criterion: Full 1 mark awarded for identifying `git merge <branch>` as the command that integrates histories of separate branches.",
-			"solution": "`git merge` combines the commits from the target branch into the active branch, creating a merge commit if a fast-forward is not possible.",
+			"answer_key_detail": "[1 Mark] Correct Option: (B) SQLite. Evaluation Criterion: Full 1 mark awarded for recognizing SQLite as the default zero-configuration database configured in Django settings.py.",
+			"solution": "Django ships preconfigured with `django.db.backends.sqlite3` out of the box, making it simple to run without an external database daemon.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "What is the return type of the built-in function `range(5)` in Python 3?",
-			"options": ["(A) list", "(B) tuple", "(C) range object", "(D) generator"],
-			"correct_answer": "(C) range object",
+			"question": "What is the primary function of the Git command `git merge` in a collaborative development workflow?",
+			"options": ["(A) To clone an external repository", "(B) To integrate changes from one branch into the currently active branch", "(C) To discard all uncommitted staging changes", "(D) To delete obsolete remote branches"],
+			"correct_answer": "(B) To integrate changes from one branch into the currently active branch",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B). Evaluation Criterion: Full 1 mark awarded for defining `git merge` as integrating commit histories from a specified branch into the current HEAD branch.",
+			"solution": "`git merge <branch>` combines independent lines of development into the current working branch.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "According to the Python Programming August 2026 batch schedule, what is the planned duration of the batch?",
+			"options": ["(A) 4 weeks", "(B) 8 weeks", "(C) 16 weeks", "(D) 6 months"],
+			"correct_answer": "(B) 8 weeks",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) 8 weeks. Evaluation Criterion: Full 1 mark awarded for identifying the 8-week duration as documented in the LMS batch overview.",
+			"solution": "The Python Programming August 2026 batch is documented as an 8-week beginner-level batch covering fundamentals to practical projects.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What are the scheduled daily timings for the Python Programming August 2026 batch?",
+			"options": ["(A) 08:00 to 12:00", "(B) 09:00 to 18:00 (Asia/Kolkata)", "(C) 14:00 to 20:00", "(D) 18:00 to 21:00"],
+			"correct_answer": "(B) 09:00 to 18:00 (Asia/Kolkata)",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) 09:00 to 18:00 (Asia/Kolkata). Evaluation Criterion: Full 1 mark awarded for matching the batch schedule specifications.",
+			"solution": "The batch schedule is configured from 09:00:00 to 18:00:00 in timezone Asia/Kolkata.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which Python release introduced list comprehensions and a cycle-detecting garbage collector in October 2000?",
+			"options": ["(A) Python 1.0", "(B) Python 2.0", "(C) Python 3.0", "(D) Python 3.8"],
+			"correct_answer": "(B) Python 2.0",
 			"marks": 1,
 			"difficulty": "Medium",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (C) range object. Evaluation Criterion: Full 1 mark awarded for noting that range() in Python 3 produces an immutable sequence object of type `range`, not a pre-computed list.",
-			"solution": "In Python 3, `range()` yields a space-efficient sequence object representing an arithmetic progression that calculates elements lazily on demand.",
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Python 2.0. Evaluation Criterion: Full 1 mark awarded for recognizing Python 2.0 (released October 2000) as the milestone introducing list comprehensions and cycle-detecting GC.",
+			"solution": "Python 2.0 debuted in October 2000 with list comprehensions and cycle-detecting garbage collection. Python 3.0 was released in December 2008.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Which exception is raised in Python when attempting to access a dictionary key that does not exist using bracket notation `dict[key]`?",
-			"options": ["(A) IndexError", "(B) KeyError", "(C) AttributeError", "(D) LookupException"],
-			"correct_answer": "(B) KeyError",
+			"question": "Which official Python enhancement proposal establishes standard style guidelines for formatting Python code?",
+			"options": ["(A) PEP 8", "(B) PEP 20", "(C) PEP 257", "(D) PEP 484"],
+			"correct_answer": "(A) PEP 8",
 			"marks": 1,
 			"difficulty": "Easy",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) KeyError. Evaluation Criterion: Full 1 mark awarded for identifying KeyError as the specific mapping exception raised on missing key access.",
-			"solution": "Accessing `d[key]` when `key not in d` raises a `KeyError`. Using `d.get(key)` returns `None` instead of raising an exception.",
+			"answer_key_detail": "[1 Mark] Correct Option: (A) PEP 8. Evaluation Criterion: Full 1 mark awarded for identifying PEP 8 as the Style Guide for Python Code.",
+			"solution": "PEP 8 provides conventions for Python code formatting (e.g. 4 spaces per indentation level, 79 character line length limit).",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "What is the honorific title affectionately bestowed upon Guido van Rossum by the Python community?",
+			"options": ["(A) Chief Software Architect", "(B) Benevolent Dictator For Life (BDFL)", "(C) Master of Pythonic Zen", "(D) Open Source Commander"],
+			"correct_answer": "(B) Benevolent Dictator For Life (BDFL)",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Benevolent Dictator For Life (BDFL). Evaluation Criterion: Full 1 mark awarded for identifying BDFL as detailed in the course history lesson.",
+			"solution": "Guido van Rossum held the title Benevolent Dictator For Life (BDFL) until stepping down in 2018.",
 			"internal_choice_question": None,
 		},
 	]
@@ -571,143 +1274,81 @@ def _get_python_mcq_pool(source_tag: str) -> List[Dict[str, Any]]:
 def _get_python_vsa_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Differentiate between mutable and immutable objects in Python, giving one example of each.",
-			"correct_answer": "Mutable objects can have their state or contents altered in-place (e.g., list, dict); immutable objects cannot be modified once instantiated (e.g., tuple, str, int).",
+			"question": "Differentiate between mutable and immutable data types in Python with two concrete examples of each.",
+			"correct_answer": "Mutable types can be altered in-place after creation (e.g. list, dict). Immutable types cannot be modified in-place; alterations create new objects (e.g. tuple, int).",
 			"marks": 2,
 			"difficulty": "Easy",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Accurate technical definition of mutable objects (in-place modification without memory address changes) with valid example (e.g., list, dict, set).\n"
-				"• Point 2 [1 Mark]: Accurate technical definition of immutable objects (re-allocation required on change) with valid example (e.g., tuple, str, int, float)."
+				"• Point 1 [1 Mark]: Clear definition of in-place mutation vs reallocation.\n"
+				"• Point 2 [1 Mark]: Valid examples: Lists/Dictionaries as mutable; Integers/Tuples/Strings as immutable."
 			),
-			"solution": "Mutable objects allow in-place modification of their values without changing their identity (memory address `id()`), such as `list` and `dict`. Immutable objects (such as `tuple` and `str`) cannot be modified after creation; any modification generates a new object in memory.",
+			"solution": "Mutable objects (list, dict, set) can change their content without changing their memory ID. Immutable objects (int, float, str, tuple) cannot be changed once created.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Explain the purpose of the `__name__ == '__main__'` idiom in Python scripts.",
-			"correct_answer": "It allows a Python file to act as either an importable module or an executable standalone script by checking if it is executed as the main program.",
+			"question": "Explain the significance of indentation in Python syntax compared to languages like C or Java.",
+			"correct_answer": "Python uses whitespace indentation to define code blocks instead of curly braces {} or keywords like begin/end.",
 			"marks": 2,
 			"difficulty": "Easy",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Explains that __name__ is automatically assigned '__main__' when run directly via the interpreter.\n"
-				"• Point 2 [1 Mark]: Explains that code inside the block is skipped when imported as a library by another module."
+				"• Point 1 [1 Mark]: States that indentation replaces curly braces for grouping statements into blocks.\n"
+				"• Point 2 [1 Mark]: Notes that consistent 4 spaces indentation is mandated by PEP 8 and enforced by the interpreter."
 			),
-			"solution": "When a Python module is executed directly, the interpreter sets the global variable `__name__` to `'__main__'`. If imported, `__name__` is set to the module's file name. This guard prevents executable boilerplate from running unintentionally during imports.",
+			"solution": "Indentation is syntactically mandatory in Python. Failing to maintain uniform indentation results in an `IndentationError`.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "What is the difference between shallow copy and deep copy in Python? Name the module used to perform them.",
-			"correct_answer": "A shallow copy constructs a new object but inserts references to the child objects; a deep copy duplicates both the container and all nested objects recursively. Module used: `copy`.",
+			"question": "What is the purpose of the `*args` and `**kwargs` parameters in Python function definitions?",
+			"correct_answer": "`*args` allows a function to accept any number of positional arguments as a tuple; `**kwargs` allows accepting arbitrary keyword arguments as a dictionary.",
 			"marks": 2,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Distinction between reference copying (shallow) vs recursive object cloning (deep).\n"
-				"• Point 2 [1 Mark]: Correct naming of Python's built-in `copy` module (`copy.copy()` and `copy.deepcopy()`)."
+				"• Point 1 [1 Mark]: Explains `*args` unpacks variable positional arguments into a tuple.\n"
+				"• Point 2 [1 Mark]: Explains `**kwargs` unpacks keyword arguments into a dictionary."
 			),
-			"solution": "The `copy` module provides `copy()` and `deepcopy()`. Shallow copy creates a new compound object but shares references to inner elements; modifying a nested mutable list affects both copies. Deep copy clones every nested object recursively.",
+			"solution": "`*args` captures surplus positional arguments as a tuple. `**kwargs` captures surplus keyword arguments as a key-value dictionary.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Describe the operational difference between the `is` operator and the `==` operator in Python.",
-			"correct_answer": "`==` checks for value equality (equality of contents), whereas `is` checks for identity equality (verifying if both variables reference the exact same memory location).",
+			"question": "Differentiate between `==` and `is` operators in Python expressions.",
+			"correct_answer": "`==` checks value equality (whether values are identical), while `is` checks reference identity (whether both variables point to the exact same memory address).",
 			"marks": 2,
 			"difficulty": "Easy",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Identification that `==` evaluates value equality via `__eq__()` method.\n"
-				"• Point 2 [1 Mark]: Identification that `is` evaluates object identity equality (`id(a) == id(b)`)."
+				"• Point 1 [1 Mark]: Identifies `==` as value comparison via `__eq__()`.\n"
+				"• Point 2 [1 Mark]: Identifies `is` as identity comparison via `id(a) == id(b)`."
 			),
-			"solution": "`==` compares the data values of two objects (e.g. `[1, 2] == [1, 2]` is `True`). The `is` operator checks if two references point to the exact same memory address (e.g. `[1, 2] is [1, 2]` is `False`).",
+			"solution": "`a == b` compares the contents of two objects. `a is b` tests whether `a` and `b` share the identical object identity in memory.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "How does Python's `try...except...finally` block execute, and what is the guarantee provided by `finally`?",
-			"correct_answer": "`try` executes the code; `except` catches errors; `finally` is guaranteed to run regardless of whether an exception occurred or was handled.",
+			"question": "According to the course syllabus, what are the two primary Python back-end frameworks covered for building RESTful APIs?",
+			"correct_answer": "Django and Flask.",
 			"marks": 2,
 			"difficulty": "Easy",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Correct execution order of `try` followed by conditional `except` dispatch.\n"
-				"• Point 2 [1 Mark]: Explicitly highlighting that `finally` runs unconditionally (even upon `return` or unhandled exceptions)."
+				"• Point 1 [1 Mark]: Names Django as the full-featured web framework.\n"
+				"• Point 2 [1 Mark]: Names Flask as the lightweight microframework."
 			),
-			"solution": "Code inside `try` is monitored for exceptions. If an error occurs, control passes to the matching `except` block. The `finally` block is guaranteed to execute in all circumstances, making it ideal for closing files or database connections.",
+			"solution": "The Full Stack Web Development module covers building robust server-side logic and RESTful APIs using Django or Flask.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Define list comprehension in Python and write a one-line comprehension that generates squares of even numbers from 0 to 8.",
-			"correct_answer": "A concise syntactic construct to generate lists: `[x**2 for x in range(9) if x % 2 == 0]`.",
+			"question": "State two major changes introduced in Python 3.0 that were deliberately backward-incompatible with Python 2.",
+			"correct_answer": "1. `print` statement changed to a `print()` function. 2. Text strings became Unicode by default with separate `bytes` type.",
 			"marks": 2,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Accurate technical definition of list comprehensions as compact mapping and filtering syntax.\n"
-				"• Point 2 [1 Mark]: Correct syntax: `[x**2 for x in range(9) if x % 2 == 0]`."
+				"• Point 1 [1 Mark]: Conversion of `print` statement to `print()` function.\n"
+				"• Point 2 [1 Mark]: Unicode string representation and integer true division (`/` returning float)."
 			),
-			"solution": "List comprehension provides a declarative syntax for generating new lists from iterables. The expression `[x**2 for x in range(9) if x % 2 == 0]` evaluates to `[0, 4, 16, 36, 64]`.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Explain the difference between `*args` and `**kwargs` in Python function definitions.",
-			"correct_answer": "`*args` passes variable-length non-keyword positional arguments as a tuple; `**kwargs` passes variable-length keyword arguments as a dictionary.",
-			"marks": 2,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Stating `*args` unpacks positional arguments into a tuple.\n"
-				"• Point 2 [1 Mark]: Stating `**kwargs` unpacks keyword/named arguments into a dictionary."
-			),
-			"solution": "`*args` collects any number of positional parameters into an immutable tuple. `**kwargs` collects arbitrary keyword arguments into a standard key-value dictionary.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the purpose of the `pass` statement in Python?",
-			"correct_answer": "It serves as a syntactic null statement or placeholder where code is syntactically required but no action should be executed.",
-			"marks": 2,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Definition as a no-operation (NOP) placeholder.\n"
-				"• Point 2 [1 Mark]: Practical context (empty functions, classes, or exception pass-throughs)."
-			),
-			"solution": "Because Python uses indentation to delimit code blocks, empty blocks cause a `SyntaxError`. The `pass` statement acts as a no-op placeholder for future code.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "State the difference between `break` and `continue` statements in Python loop constructs.",
-			"correct_answer": "`break` immediately terminates the loop entirely; `continue` skips the remainder of the current iteration and advances to the next iteration.",
-			"marks": 2,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Clear statement on loop termination for `break`.\n"
-				"• Point 2 [1 Mark]: Clear statement on skipping current iteration and jumping to next cycle for `continue`."
-			),
-			"solution": "When `break` is encountered, the innermost enclosing loop terminates immediately. When `continue` is encountered, execution skips the rest of the loop body and starts the next iteration.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Explain the difference between GET and POST HTTP request methods in web applications.",
-			"correct_answer": "GET requests data from a specified resource via URL query strings without side effects; POST submits data in the HTTP request body to create or modify server resources.",
-			"marks": 2,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: GET parameters in URL query string, idempotent, read-only cacheable.\n"
-				"• Point 2 [1 Mark]: POST data payload in request body, non-idempotent, used for state mutation."
-			),
-			"solution": "GET is safe and idempotent, passing parameters in the URL query string. POST transmits payloads inside the HTTP message body, used for sensitive or state-changing actions like user registration or form submission.",
+			"solution": "Python 3.0 broke backward compatibility to eliminate historical flaws, transitioning `print` to a function and enforcing distinct `str` (Unicode) and `bytes` types.",
 			"internal_choice_question": None,
 		},
 	]
@@ -716,156 +1357,101 @@ def _get_python_vsa_pool(source_tag: str) -> List[Dict[str, Any]]:
 def _get_python_short_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Explain Python's LEGB rule for variable scope resolution with a clear illustrative code example.",
-			"correct_answer": "LEGB defines scope hierarchy: Local -> Enclosing -> Global -> Built-in. Python searches each namespace sequentially until a matching identifier is located.",
+			"question": "Explain the concept and advantages of List Comprehensions in Python. Provide a clear code example converting a list of temperatures from Celsius to Fahrenheit.",
+			"correct_answer": "List comprehension provides a concise syntax for creating lists from iterables. Example: `fahrenheit = [(c * 9/5) + 32 for c in celsius]`.",
 			"marks": 3,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Theoretical explanation of the 4 namespaces: Local, Enclosing (nested functions), Global (module level), and Built-in (builtins module).\n"
-				"• Point 2 [1 Mark]: Description of sequential resolution order (search stops at first match; raises NameError if exhausted).\n"
-				"• Point 3 [1 Mark]: Concrete code snippet demonstrating nested scopes with distinct variable shadowing."
+				"• Point 1 [1 Mark]: Definition and syntax: `[expression for item in iterable if condition]`.\n"
+				"• Point 2 [1 Mark]: Performance and readability: C-level loop optimization and reduced boilerplate compared to `for` loops.\n"
+				"• Point 3 [1 Mark]: Valid code implementation calculating `(c * 9/5) + 32` across a collection."
 			),
-			"solution": (
-				"1. Scope Hierarchy (1 Mark): Local (names assigned within a function), Enclosing (enclosing functions from inner to outer), Global (top-level module), Built-in (preassigned system names like len, range).\n"
-				"2. Resolution Order (1 Mark): When resolving `x`, Python searches L -> E -> G -> B sequentially.\n"
-				"3. Code Example (1 Mark):\n"
-				"```python\n"
-				"x = 'global'\n"
-				"def outer():\n"
-				"    x = 'enclosing'\n"
-				"    def inner():\n"
-				"        x = 'local'\n"
-				"        return x\n"
-				"    return inner()\n"
-				"```"
-			),
+			"solution": "List comprehensions offer a readable, expressive way to transform data. They execute faster than explicit Python `for` loops because loop construction runs in optimized C bytecode.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Describe the Generator protocol in Python. Detail how the `yield` statement operates and explain the memory benefits over standard lists.",
-			"correct_answer": "Generators produce items one-at-a-time on demand (lazy evaluation). `yield` returns a value while preserving function execution frame state.",
+			"question": "Explain the LEGB rule of variable scope resolution in Python. Describe how Python resolves variable lookups in nested functions.",
+			"correct_answer": "Python checks Local, then Enclosing, then Global, and finally Built-in scope. It raises NameError if the identifier is not found.",
 			"marks": 3,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Operational definition of `yield` suspending function state (instruction pointer, local variables) and yielding control.\n"
-				"• Point 2 [1 Mark]: Explanation of lazy evaluation and generator iterator protocol (`__iter__` and `__next__`).\n"
-				"• Point 3 [1 Mark]: Memory efficiency comparison (O(1) auxiliary memory vs O(N) memory allocation for large lists)."
+				"• Point 1 [1 Mark]: Sequential order: Local -> Enclosing -> Global -> Built-in.\n"
+				"• Point 2 [1 Mark]: Explanation of inner functions accessing outer function closures (Enclosing scope).\n"
+				"• Point 3 [1 Mark]: The role of `global` and `nonlocal` keywords when modifying outer namespaces."
 			),
-			"solution": (
-				"1. Mechanism (1 Mark): A generator function contains `yield`. When called, it returns a generator object. Calling `next()` executes code until `yield`, which freezes execution state and returns the yielded value.\n"
-				"2. Protocol (1 Mark): Implements the iterator protocol, raising `StopIteration` when the function terminates.\n"
-				"3. Memory Advantage (1 Mark): A list of 10 million integers consumes hundreds of megabytes of RAM; a generator calculating numbers sequentially requires constant O(1) memory overhead."
-			),
+			"solution": "When resolving a variable name, Python searches the Local namespace first, moves outward to Enclosing closures, inspects Global module attributes, and finally checks the Built-in namespace.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Differentiate between `@classmethod`, `@staticmethod`, and regular instance methods in Python classes.",
-			"correct_answer": "Instance methods receive `self`; class methods receive `cls` via `@classmethod`; static methods receive neither via `@staticmethod`.",
+			"question": "Describe the MVT (Model-View-Template) architectural pattern utilized by Django in Python Full Stack Web Development.",
+			"correct_answer": "Model handles database schema and ORM; View handles HTTP request logic; Template renders dynamic HTML to the user.",
 			"marks": 3,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Instance methods take `self` as the first argument to manipulate instance-level attributes.\n"
-				"• Point 2 [1 Mark]: `@classmethod` decorator takes `cls` as first argument to access or modify class-level state or serve as alternative constructors.\n"
-				"• Point 3 [1 Mark]: `@staticmethod` decorator acts as an isolated utility function without implicit instance or class bindings."
+				"• Point 1 [1 Mark]: Model: Defines data structures, validations, and ORM mapping to relational database tables.\n"
+				"• Point 2 [1 Mark]: View: Processes HTTP requests, invokes models, and prepares context dictionaries.\n"
+				"• Point 3 [1 Mark]: Template: Presentation layer rendering HTML with Django Template Language (DTL)."
 			),
-			"solution": (
-				"1. Instance Methods: Bound to instances, receiving `self`. Can modify both instance and class state.\n"
-				"2. Class Methods: Decorated with `@classmethod`, receiving `cls`. Commonly used for factory methods and modifying class-wide variables.\n"
-				"3. Static Methods: Decorated with `@staticmethod`. Do not receive `self` or `cls`, functioning like regular functions namespaced within the class."
-			),
+			"solution": "Django's MVT pattern decouples data access (Model), business logic (View), and user interface representation (Template), promoting maintainability and separation of concerns.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Analyze Django's ORM QuerySet evaluation. Explain lazy execution and compare `select_related` with `prefetch_related`.",
-			"correct_answer": "QuerySets are lazy (evaluated only when iteration occurs). `select_related` performs SQL JOINs for single-valued relationships; `prefetch_related` performs separate queries in Python for multi-valued relationships.",
-			"marks": 3,
-			"difficulty": "Hard",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Lazy evaluation concept (QuerySets do not hit the database until sliced, looped over, or serialized).\n"
-				"• Point 2 [1 Mark]: `select_related` mechanism (SQL inner/left JOIN for ForeignKey and OneToOneField).\n"
-				"• Point 3 [1 Mark]: `prefetch_related` mechanism (separate SQL IN queries for ManyToManyField and reverse ForeignKeys, joined in Python memory)."
-			),
-			"solution": (
-				"1. Lazy Execution: Defining `Post.objects.all()` does not execute SQL immediately; evaluation is deferred until results are consumed.\n"
-				"2. `select_related`: Solves the N+1 problem on forward single relationships by creating an SQL JOIN in a single database query.\n"
-				"3. `prefetch_related`: Solves N+1 on many-to-many or reverse foreign keys by executing 2 queries and stitching related records in memory."
-			),
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Explain the concept of Method Resolution Order (MRO) and C3 Linearization in Python multiple inheritance.",
-			"correct_answer": "MRO defines the search order for methods across inheritance trees using the C3 Linearization algorithm to ensure monotonicity and local precedence.",
-			"marks": 3,
-			"difficulty": "Hard",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Definition of MRO as the deterministic search path for attribute lookup in multiple inheritance.\n"
-				"• Point 2 [1 Mark]: Principles of C3 Linearization (preserves local precedence order and monotonic inheritance without diamond ambiguity).\n"
-				"• Point 3 [1 Mark]: Method inspection syntax (`ClassName.mro()` or `ClassName.__mro__`) and `super()` cooperative method dispatch."
-			),
-			"solution": (
-				"1. Concept: When a class inherits from multiple parents, Python uses MRO to determine which parent method executes first.\n"
-				"2. C3 Algorithm: Guarantees that child classes precede parents and the order of parent classes in the class declaration is preserved.\n"
-				"3. Inspection: Developers inspect MRO via `Class.__mro__`. Using `super()` delegates calls strictly along the MRO list."
-			),
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Detail how context managers work under the hood in Python using `__enter__` and `__exit__` dunder methods.",
-			"correct_answer": "`__enter__` sets up the resource context; `__exit__` handles cleanup, receiving exception parameters `(exc_type, exc_val, exc_tb)`.",
+			"question": "Explain how Python manages memory using Reference Counting and the Generational Cycle-Detecting Garbage Collector.",
+			"correct_answer": "Reference counting deallocates memory when ref count reaches 0; cyclic GC detects and collects circular reference graphs across 3 generations.",
 			"marks": 3,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Role of `__enter__()` executing before the block and optionally binding the target with `as`.\n"
-				"• Point 2 [1 Mark]: Role of `__exit__(exc_type, exc_val, exc_tb)` executing on block termination with exception details.\n"
-				"• Point 3 [1 Mark]: Exception suppression rule (returning `True` from `__exit__` swallows the exception; returning `False` re-raises)."
+				"• Point 1 [1 Mark]: Reference counting: Tracks references per object; immediately frees memory when count drops to zero.\n"
+				"• Point 2 [1 Mark]: Circular references: Explains why reference counting alone fails for self-referential structures (e.g. `a.ref = b; b.ref = a`).\n"
+				"• Point 3 [1 Mark]: Generational GC: Classifies objects into Gen 0, Gen 1, and Gen 2, running cycle-detection heuristics."
 			),
-			"solution": (
-				"1. Setup: `with Expression as target:` calls `Expression.__enter__()`, binding its return value to `target`.\n"
-				"2. Teardown: Upon block exit, `__exit__(exc_type, exc_val, exc_tb)` is invoked with exception details if an error occurred.\n"
-				"3. Error Handling: If no exception occurs, all three arguments are `None`. Returning `True` suppresses exceptions; returning `False` propagates them."
-			),
+			"solution": "CPython uses reference counting as its primary memory management strategy. To handle circular reference cycles, Python runs a generational garbage collector that inspects object graphs periodically.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Explain the role and syntax of Python Decorators, illustrating how a decorator wraps a function.",
-			"correct_answer": "Decorators are callable functions that accept another function as an argument, extend its behavior dynamically, and return a replacement callable.",
+			"question": "Compare relational databases (PostgreSQL/SQLite) with document databases in the context of Full Stack web applications.",
+			"correct_answer": "Relational databases enforce strict schemas and ACID transactions with foreign keys; document databases offer flexible JSON-like schemas.",
 			"marks": 3,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Definition of decorators as higher-order functions modifying function behavior without altering source code.\n"
-				"• Point 2 [1 Mark]: Use of closure and inner wrapper function accepting `*args` and `**kwargs`.\n"
-				"• Point 3 [1 Mark]: Syntax demonstration with `@decorator_name` syntactic sugar and `@functools.wraps` metadata preservation."
+				"• Point 1 [1 Mark]: Relational schema: Tables, columns, foreign key constraints, and relational normalization.\n"
+				"• Point 2 [1 Mark]: ACID compliance: Strong consistency and transactional rollback guarantees in PostgreSQL/SQLite.\n"
+				"• Point 3 [1 Mark]: Use case comparison: When to choose relational (financial, structured data) vs NoSQL (unstructured, high-velocity)."
 			),
-			"solution": (
-				"1. Theory: Decorators take a callable `f` and return a wrapped callable `wrapper`.\n"
-				"2. Implementation:\n"
-				"```python\n"
-				"from functools import wraps\n"
-				"def my_decorator(func):\n"
-				"    @wraps(func)\n"
-				"    def wrapper(*args, **kwargs):\n"
-				"        print('Before call')\n"
-				"        res = func(*args, **kwargs)\n"
-				"        print('After call')\n"
-				"        return res\n"
-				"    return wrapper\n"
-				"```\n"
-				"3. Syntax: Applying `@my_decorator` over `def f()` is equivalent to `f = my_decorator(f)`."
+			"solution": "Relational databases provide strong ACID guarantees and structured schema validation, essential for financial and core application data. Document databases provide dynamic schema flexibility.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Explain the role and lifecycle of the Context Manager protocol in Python. Detail the responsibilities of `__enter__` and `__exit__`.",
+			"correct_answer": "`__enter__` acquires resources and returns context; `__exit__` guarantees resource release and handles exceptions.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Role of `with` statement: Automatic setup and teardown for external resources.\n"
+				"• Point 2 [1 Mark]: `__enter__`: Sets up the resource and binds target variable.\n"
+				"• Point 3 [1 Mark]: `__exit__`: Receives exception type, value, and traceback; returns boolean indicating whether exception was suppressed."
 			),
+			"solution": "Context managers eliminate resource leaks by ensuring teardown routines execute reliably even when runtime exceptions occur.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Outline the Front-End Foundations taught in the Python Full Stack Developer course (HTML5, CSS3, modern JavaScript ES6+).",
+			"correct_answer": "HTML5 semantic markup, CSS3 responsive styling (flexbox/grid), and JavaScript ES6+ for dynamic UI and DOM manipulation.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: HTML5: Semantic elements (`<header>`, `<nav>`, `<article>`, `<section>`) ensuring accessibility and structure.\n"
+				"• Point 2 [1 Mark]: CSS3: Responsive design with Flexbox, CSS Grid, media queries, and animations.\n"
+				"• Point 3 [1 Mark]: Modern JavaScript (ES6+): Arrow functions, promises, async/await, and fetch API for asynchronous backend communication."
+			),
+			"solution": "The front-end curriculum equips developers to construct accessible HTML5 structures, style responsive interfaces using CSS3, and manage interactive state with modern JavaScript.",
 			"internal_choice_question": None,
 		},
 	]
@@ -874,207 +1460,110 @@ def _get_python_short_pool(source_tag: str) -> List[Dict[str, Any]]:
 def _get_python_long_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Analyze the Object-Oriented Programming (OOP) paradigm in Python. Detail the four core pillars (Encapsulation, Abstraction, Inheritance, and Polymorphism), explain private vs protected naming conventions, and demonstrate inheritance with a syntactically complete code example.",
-			"correct_answer": "Comprehensive breakdown of Python OOP pillars, name mangling with double underscores (`__`), single underscore conventions (`_`), and clean inheritance demonstration.",
+			"question": "Provide an in-depth architectural analysis of Python's Object-Oriented Programming (OOP) model. Explain class instantiation, constructor initialization (`__init__`), single and multiple inheritance, method resolution order (MRO / C3 linearization), and illustrate with a complete code demonstration.",
+			"correct_answer": "Comprehensive breakdown of Python OOP: classes, instances, inheritance, MRO, and syntactically valid code.",
 			"marks": 5,
 			"difficulty": "Hard",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (5 Marks Total):\n"
-				"• Theoretical Concept & Definitions [1 Mark]: Explicit definition and purpose of the 4 OOP pillars in Python.\n"
-				"• Encapsulation & Access Modifiers [1 Mark]: Detailed explanation of `_protected` (convention) vs `__private` (name mangling: `_ClassName__var`).\n"
-				"• Inheritance Architecture & `super()` [1 Mark]: Mechanics of child class derivation and constructor chaining via `super().__init__()`.\n"
-				"• Polymorphism & Dynamic Dispatch [1 Mark]: How method overriding enables interchangeable interfaces at runtime.\n"
-				"• Code Implementation [1 Mark]: Complete, error-free Python class hierarchy demonstrating base class, derived class, and method overriding."
+				"• Theoretical Foundation & Principles [1 Mark]: Definition of classes as type factories and `__new__` vs `__init__`.\n"
+				"• Inheritance & Super Mechanism [1 Mark]: Detailed explanation of `super()` and cooperative multiple inheritance.\n"
+				"• Method Resolution Order (MRO) [1 Mark]: Explanation of C3 linearization algorithm and `Class.__mro__`.\n"
+				"• Implementation / Code Demonstration [1 Mark]: Syntactically valid Python code showing base class, subclass, `super()`, and method overriding.\n"
+				"• Best Practices & Pitfalls [1 Mark]: Avoiding fragile multiple inheritance diamond problems and enforcing encapsulation with `@property`."
 			),
 			"solution": (
-				"1. Core OOP Pillars (1 Mark): Encapsulation bundles data and methods; Abstraction hides implementation complexity; Inheritance promotes code reuse; Polymorphism provides unified interfaces.\n"
-				"2. Access Conventions (1 Mark): Python lacks strict access keywords. `_attr` is an advisory private convention. `__attr` invokes name mangling (`_Class__attr`) to prevent subclass collision.\n"
-				"3. Inheritance & `super()` (1 Mark): `super()` delegates constructor execution up the MRO tree.\n"
-				"4. Code Implementation (2 Marks):\n"
-				"```python\n"
-				"class Employee:\n"
-				"    def __init__(self, name: str, salary: float):\n"
-				"        self.name = name\n"
-				"        self._salary = salary\n"
-				"    def calculate_bonus(self) -> float:\n"
-				"        return self._salary * 0.10\n\n"
-				"class Manager(Employee):\n"
-				"    def __init__(self, name: str, salary: float, department: str):\n"
-				"        super().__init__(name, salary)\n"
-				"        self.department = department\n"
-				"    def calculate_bonus(self) -> float:\n"
-				"        return self._salary * 0.20\n"
-				"```"
+				"1. Foundation: In Python, everything is an object. `__new__` allocates memory, while `__init__` sets initial instance attributes.\n"
+				"2. Inheritance: `class Derived(Base):` establishes inheritance. `super().__init__()` delegates to parent constructors.\n"
+				"3. MRO: C3 linearization algorithm resolves attributes consistently in multiple inheritance hierarchies.\n"
+				"4. Code:\n"
+				"   class User:\n"
+				"       def __init__(self, username): self.username = username\n"
+				"   class Admin(User):\n"
+				"       def __init__(self, username, level):\n"
+				"           super().__init__(username)\n"
+				"           self.level = level\n"
+				"5. Best Practices: Use `@property` for getters/setters and favor composition over deeply nested inheritance trees."
 			),
 			"internal_choice_question": {
-				"question": "OR: Analyze Python's internal Memory Management architecture. Explain Reference Counting, the Generational Garbage Collector (Generations 0, 1, and 2), cyclic reference handling, and the impact of the Global Interpreter Lock (GIL) on multithreaded concurrency.",
+				"question": "OR: Analyze Python Decorators and Higher-Order Functions. Explain how decorators leverage closures and first-class functions, write a custom parameterized decorator that measures and logs execution time of arbitrary functions, and discuss practical production use cases.",
 				"marks": 5,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Complete analysis of CPython reference counters (`ob_refcnt`), cyclic garbage detection algorithm across 3 generations, and GIL concurrency limits.",
+				"correct_answer": "Detailed breakdown of decorators, closures, `functools.wraps`, timing decorator implementation, and production applications.",
 				"answer_key_detail": (
-					"Marking Scheme (5 Marks Total):\n"
-					"• Reference Counting Mechanics [1 Mark]: How `ob_refcnt` increments on assignment/passing and decrements on `del` or scope exit, triggering immediate deallocation at 0.\n"
-					"• Cyclic Garbage Collection [1 Mark]: Why reference counting fails on circular references (e.g. `a.ref = b; b.ref = a`).\n"
-					"• Generational GC Architecture [1 Mark]: Breakdown of Generations 0, 1, and 2 based on object survival heuristics.\n"
-					"• Global Interpreter Lock (GIL) [1 Mark]: Thread synchronization mechanism ensuring thread-safe reference counting in CPython.\n"
-					"• Performance & Concurrency Trade-offs [1 Mark]: CPU-bound multithreading limitations vs multiprocessing or asyncio solutions."
+					"• Theoretical Foundation [1 Mark]: First-class functions, inner function closures, and the `@decorator` syntactic sugar.\n"
+					"• Decorator Anatomy [1 Mark]: Explanation of outer wrapper function, inner wrapper function, and `*args, **kwargs` forwarding.\n"
+					"• Role of `functools.wraps` [1 Mark]: Preserving function introspection (`__name__`, `__doc__`).\n"
+					"• Code Demonstration [1 Mark]: Syntactically valid timer decorator using `time.perf_counter()`.\n"
+					"• Production Applications [1 Mark]: Authentication, rate limiting, logging, and caching in web frameworks."
 				),
-				"solution": (
-					"1. Reference Counting: Every object contains an `ob_refcnt`. When zero, memory is immediately released back to Python's memory allocator (PyMalloc).\n"
-					"2. Cyclic References: Objects referencing each other never reach count zero. Python's cyclic GC scans pointer graphs to identify isolated reference islands.\n"
-					"3. Generational Heuristics: New objects start in Generation 0. Surviving garbage collection cycles promotes them to Gen 1 and Gen 2, which are scanned less frequently.\n"
-					"4. The GIL: Protects internal memory structures from race conditions. Consequently, threads cannot execute bytecode concurrently across multiple CPU cores; developers use `multiprocessing` for CPU-bound parallelism."
-				),
+				"solution": "Decorators wrap functions to dynamically extend their behavior without altering source code. Using `functools.wraps` ensures metadata preservation.",
 			},
 		},
 		{
-			"question": "Examine Django's MVT (Model-View-Template) architectural pattern. Detail how HTTP requests traverse from URL routing to view processing, how the ORM manages relational data schemas, and how templates render dynamic contexts with security protections against Cross-Site Scripting (XSS).",
-			"correct_answer": "Full end-to-end trace of Django's HTTP request pipeline: urls.py -> Middleware -> views.py -> models.py (ORM) -> template rendering with auto-escaping.",
+			"question": "Examine the end-to-end architecture of a modern Python Full Stack Web Application. Detail the request-response lifecycle from browser client to Nginx, WSGI/ASGI application server (Gunicorn/Uvicorn), Django/Flask routing and ORM, and database persistence (PostgreSQL).",
+			"correct_answer": "Complete request lifecycle from client HTTP request through reverse proxy, WSGI gateway, framework routing, ORM SQL execution, and response rendering.",
 			"marks": 5,
 			"difficulty": "Hard",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (5 Marks Total):\n"
-				"• Architecture & Request Lifecycle [1 Mark]: Sequential flow from WSGI/ASGI entry through URL pattern matching to view dispatch.\n"
-				"• View Business Logic [1 Mark]: Processing of HttpRequest objects and generation of HttpResponse / JsonResponse.\n"
-				"• Model & ORM Abstraction [1 Mark]: Mapping Python class definitions to relational database tables and migrations.\n"
-				"• Template System & Security [1 Mark]: Context injection, template tags/filters, and automatic HTML escaping for XSS prevention.\n"
-				"• Architectural Comparison [1 Mark]: Clear distinction between Django MVT and classic MVC (where the framework itself serves as Controller)."
+				"• Client to Reverse Proxy [1 Mark]: Client initiates HTTPS request -> DNS lookup -> Nginx handles SSL termination and static files.\n"
+				"• WSGI/ASGI Interface [1 Mark]: Nginx proxies request to Gunicorn/Uvicorn using the WSGI/ASGI protocol.\n"
+				"• Framework Routing & Middleware [1 Mark]: Django middleware pipeline executes security, session, and CSRF checks before dispatching to View.\n"
+				"• ORM & Database Layer [1 Mark]: Django ORM translates querysets into optimized SQL statements executed against PostgreSQL.\n"
+				"• Response Pipeline [1 Mark]: View returns HTTP response or serialized JSON, traversing middleware back to client."
 			),
 			"solution": (
-				"1. Request Pipeline: Web server passes request to Django's WSGI handler. `MIDDLEWARE` processes authentication and security headers. `urls.py` resolves URL patterns to view callables.\n"
-				"2. Views: Views execute business logic, querying the database through Model ORM managers (`Model.objects.filter(...)`).\n"
-				"3. Models: Models define schema fields, relationships (ForeignKey, ManyToManyField), and validation rules.\n"
-				"4. Templates: Views pass dictionary contexts to templates. Django's template engine interpolates variables (`{{ var }}`) with automatic HTML character escaping.\n"
-				"5. MVT vs MVC: In MVT, the Model is the data, the View is the controller, and the Template is the view; Django itself acts as the overall controller."
+				"1. Nginx terminates TLS and serves static assets directly.\n"
+				"2. Dynamic requests pass via WSGI/ASGI socket to Gunicorn worker processes.\n"
+				"3. Django passes request through middleware layers (Security, Sessions, CSRF) to the URL dispatcher.\n"
+				"4. The view queries the database via Django ORM and builds the response.\n"
+				"5. The response travels back through middleware to Nginx and down to the client browser."
 			),
 			"internal_choice_question": {
-				"question": "OR: Analyze Relational Database Design and the ACID properties in modern full-stack web applications. Detail Atomicity, Consistency, Isolation, and Durability, explain database normalization (1NF, 2NF, 3NF), and discuss how database transactions prevent race conditions during concurrent financial updates.",
+				"question": "OR: Examine Database Design and Query Optimization in Full Stack applications using Django ORM and PostgreSQL. Detail entity modeling, foreign key relationships, the N+1 query problem, and how `select_related` and `prefetch_related` resolve performance bottlenecks.",
 				"marks": 5,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Complete analysis of ACID guarantees, normalization rules from 1NF through 3NF, and database transactions (`transaction.atomic`) preventing lost updates.",
+				"correct_answer": "Relational schema design, normalization, N+1 query diagnosis, and optimization using select_related (SQL JOIN) and prefetch_related (batch IN query).",
 				"answer_key_detail": (
-					"Marking Scheme (5 Marks Total):\n"
-					"• ACID Properties Definition [1 Mark]: Detailed technical definition of Atomicity, Consistency, Isolation, and Durability.\n"
-					"• Normalization Principles (1NF, 2NF, 3NF) [1.5 Marks]: Atomic attributes (1NF), elimination of partial dependencies (2NF), and elimination of transitive dependencies (3NF).\n"
-					"• Concurrency & Isolation Levels [1 Mark]: Read Uncommitted, Read Committed, Repeatable Read, and Serializable levels.\n"
-					"• Transaction Management & Code [1.5 Marks]: Implementing atomic transactions and row-locking (`select_for_update()`) in web backends to avoid race conditions."
+					"• Schema Design & Normalization [1 Mark]: 1-to-1, 1-to-Many, and Many-to-Many entity relationships with foreign keys.\n"
+					"• N+1 Query Problem Diagnosis [1 Mark]: Explaining how loop iteration over related models triggers N separate SQL queries.\n"
+					"• `select_related` Mechanics [1 Mark]: Using SQL inner/left outer JOINs for single-valued relationships (ForeignKey, OneToOne).\n"
+					"• `prefetch_related` Mechanics [1 Mark]: Using multi-table batch lookups with SQL `IN` operators for multi-valued relationships (ManyToMany).\n"
+					"• Database Indexing & Metrics [1 Mark]: Adding `db_index=True`, compound indexes, and evaluating query plans with `EXPLAIN ANALYZE`."
 				),
-				"solution": (
-					"1. ACID Properties: Atomicity (all-or-nothing execution), Consistency (maintaining schema constraints), Isolation (concurrent transactions do not interfere), Durability (committed data survives crashes).\n"
-					"2. Normalization: 1NF requires scalar values without repeating groups; 2NF requires 1NF and no non-key attribute dependent on a subset of the candidate key; 3NF requires 2NF and no transitive functional dependencies.\n"
-					"3. Race Conditions: In financial transfers, concurrent debits can overdraft accounts. Wrapping updates in `transaction.atomic()` with `select_for_update()` locks rows until commit, ensuring deterministic serial execution."
-				),
+				"solution": "The N+1 problem occurs when querying related objects inside loops. `select_related` performs an immediate SQL JOIN, while `prefetch_related` executes an efficient separate batch query.",
 			},
 		},
 		{
-			"question": "Detail the architecture of Asynchronous Programming in modern Python using `asyncio`. Compare asynchronous coroutines (`async`/`await`) with OS-level multithreading and multiprocessing, explain event loop mechanics, and illustrate asynchronous concurrent I/O with code.",
-			"correct_answer": "In-depth breakdown of single-threaded cooperative multitasking via event loop, comparison with threads and processes, and `asyncio.gather()` code example.",
+			"question": "Provide a comprehensive analysis of Asynchronous Programming in Python using `asyncio`. Contrast synchronous multithreading with cooperative multitasking, detail the Event Loop architecture, explain `async`/`await` keywords, and illustrate with a code demonstration fetching concurrent mock API endpoints.",
+			"correct_answer": "Detailed breakdown of asyncio event loop, coroutines, async/await, non-blocking I/O, and concurrent execution code.",
 			"marks": 5,
 			"difficulty": "Hard",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (5 Marks Total):\n"
-				"• Event Loop Architecture [1 Mark]: Single-threaded event loop multiplexing asynchronous I/O sockets without OS thread overhead.\n"
-				"• Coroutines & `async`/`await` [1 Mark]: Mechanics of pausing execution on I/O boundaries and relinquishing control to pending tasks.\n"
-				"• Comparison Matrix [1 Mark]: Explicit trade-off comparison across Asyncio (I/O bound), Threading (I/O bound with GIL), and Multiprocessing (CPU bound).\n"
-				"• Code Implementation [1 Mark]: Syntactically valid asynchronous routine utilizing `async def`, `await`, and `asyncio.gather()`.\n"
-				"• Production Pitfalls & Best Practices [1 Mark]: Warning against blocking calls (e.g. `time.sleep()`, synchronous DB drivers) that freeze the event loop."
+				"• Synchronous vs Asynchronous Paradigms [1 Mark]: OS thread context switching overhead vs single-threaded cooperative event loops.\n"
+				"• Event Loop Architecture [1 Mark]: Task scheduling, I/O multiplexing (epoll/kqueue), and non-blocking sockets.\n"
+				"• Coroutines & `async`/`await` [1 Mark]: Coroutines as suspended execution states yielding control upon `await`.\n"
+				"• Code Implementation [1 Mark]: Syntactically valid `asyncio` code with `asyncio.gather()` executing multiple concurrent tasks.\n"
+				"• Pitfalls & Best Practices [1 Mark]: Avoiding CPU-bound blocking calls inside the event loop and utilizing `run_in_executor()`."
 			),
 			"solution": (
-				"1. Event Loop: Python's `asyncio` runs a single-threaded loop that monitors file descriptors and network sockets using epoll/kqueue.\n"
-				"2. Coroutines: `async def` defines a coroutine. The `await` keyword yields execution back to the loop until the awaited Future completes.\n"
-				"3. Comparison:\n"
-				"- Asyncio: Cooperative, low memory footprint, ideal for 10,000+ concurrent network connections.\n"
-				"- Threading: Preemptive, higher memory overhead, subject to CPython GIL.\n"
-				"- Multiprocessing: Multiple distinct Python processes, bypasses GIL, ideal for heavy CPU calculations.\n"
-				"4. Code Example:\n"
-				"```python\n"
-				"import asyncio\n"
-				"async def fetch_data(item_id):\n"
-				"    await asyncio.sleep(0.1)\n"
-				"    return {'id': item_id, 'status': 'complete'}\n\n"
-				"async def main():\n"
-				"    tasks = [fetch_data(i) for i in range(5)]\n"
-				"    results = await asyncio.gather(*tasks)\n"
-				"```"
+				"1. `asyncio` enables high-concurrency I/O bound execution without thread switching overhead.\n"
+				"2. An Event Loop manages task execution and schedules coroutines when non-blocking I/O completes.\n"
+				"3. `async def` defines a coroutine; `await` yields execution until the awaited future resolves.\n"
+				"4. Code uses `asyncio.gather(*tasks)` to run concurrent network operations efficiently."
 			),
 			"internal_choice_question": {
-				"question": "OR: Analyze Web Security vulnerabilities and defense strategies in full-stack Python applications. Detail SQL Injection, Cross-Site Scripting (XSS), and Cross-Site Request Forgery (CSRF). Explain the root cause of each vulnerability and the concrete countermeasures enforced by modern frameworks.",
+				"question": "OR: Analyze Software Testing Methodologies for Python Applications. Differentiate between Unit Testing, Integration Testing, and End-to-End Testing. Detail test fixtures, parameterization with `pytest`, mocking external dependencies with `unittest.mock`, and continuous integration pipelines.",
 				"marks": 5,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Complete security analysis of SQLi, XSS (stored, reflected), and CSRF with parameterized queries, template auto-escaping, and CSRF token cookies.",
+				"correct_answer": "Testing pyramid, unit vs integration vs E2E, pytest fixtures and parameterization, mocking, and CI/CD integration.",
 				"answer_key_detail": (
-					"Marking Scheme (5 Marks Total):\n"
-					"• SQL Injection (SQLi) [1.5 Marks]: Root cause (untrusted string concatenation in SQL queries) and mitigation (parameterized queries / ORM prepared statements).\n"
-					"• Cross-Site Scripting (XSS) [1.5 Marks]: Root cause (untrusted script execution in user browsers) and mitigation (contextual output encoding, Content Security Policy, template auto-escaping).\n"
-					"• Cross-Site Request Forgery (CSRF) [1 Mark]: Root cause (ambient credentials exploited across cross-origin requests) and mitigation (SameSite cookies and cryptographic CSRF tokens).\n"
-					"• Password Hashing & Encryption [1 Mark]: Utilizing slow cryptographic hashing algorithms (bcrypt, Argon2) with per-user salt."
+					"• Testing Pyramid Breakdown [1 Mark]: Unit tests (fast, isolated), Integration tests (database, services), and E2E tests (user journey).\n"
+					"• Pytest Fixtures & Lifecycle [1 Mark]: Scope of fixtures (`function`, `module`, `session`), dependency injection, and teardown.\n"
+					"• Parameterized Testing [1 Mark]: Using `@pytest.mark.parametrize` to execute multiple test cases across data sets.\n"
+					"• Mocking & Isolation [1 Mark]: Using `unittest.mock.patch` to isolate third-party APIs and prevent flaky tests.\n"
+					"• Code Coverage & CI [1 Mark]: Enforcing coverage thresholds with `pytest-cov` and running automated test suites in CI pipelines."
 				),
-				"solution": (
-					"1. SQL Injection: Occurs when user input alters query syntax. Mitigation: Never concatenate SQL strings; use parameterized queries or ORMs that separate query code from data parameters.\n"
-					"2. XSS: Attackers inject malicious JavaScript. Stored XSS persists in databases; Reflected XSS reflects off immediate parameters. Mitigation: Context-aware HTML entity encoding and strict Content Security Policy (CSP).\n"
-					"3. CSRF: Tricks authenticated browsers into submitting malicious state-changing requests. Mitigation: Cryptographic anti-CSRF tokens embedded in forms and verified against session cookies upon submission.\n"
-					"4. Password Storage: Plaintext or MD5/SHA1 is insecure. Use salted, key-stretching algorithms like Argon2id or bcrypt."
-				),
-			},
-		},
-		{
-			"question": "Examine the Git Version Control workflow and branching strategies for full-stack engineering teams. Explain Git's internal object store (blobs, trees, commits, and tags), detail the differences between `git merge` and `git rebase`, and outline a standard GitFlow release process.",
-			"correct_answer": "Detailed analysis of Git DAG and internal objects (blob, tree, commit), comparison of non-destructive merges vs linear rebase history, and GitFlow branches.",
-			"marks": 5,
-			"difficulty": "Hard",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (5 Marks Total):\n"
-				"• Internal Object Model [1 Mark]: Explanation of SHA-1 content-addressable storage for Blobs (files), Trees (directories), Commits (metadata/pointers), and Annotated Tags.\n"
-				"• Three Trees Architecture [1 Mark]: Working Directory -> Staging Area (Index) -> Git Repository (HEAD).\n"
-				"• Merge vs Rebase [1.5 Marks]: Non-destructive 3-way merge commits vs replaying commits on top of base branch to maintain a linear history.\n"
-				"• GitFlow Strategy [1 Mark]: Distinct roles of `main`, `develop`, `feature/*`, `release/*`, and `hotfix/*` branches.\n"
-				"• Merge Conflict Resolution [0.5 Mark]: Identifying conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) and verifying post-merge integrity."
-			),
-			"solution": (
-				"1. Git Internal Store: Git is a directed acyclic graph (DAG) of content-addressed objects stored under `.git/objects`. Blobs hold raw file content; Trees map filenames to blobs/subtrees; Commits reference a root tree, parent commits, author, and commit message.\n"
-				"2. Three Areas: Working Directory holds editable files; Staging Area (`git add`) prepares changes; Repository (`git commit`) permanently logs immutable snapshots.\n"
-				"3. Merge vs Rebase:\n"
-				"- `git merge` creates a merge commit preserving exact historical timeline and commit order.\n"
-				"- `git rebase` rewrites history by moving the base of the current branch onto the target branch tip, creating a clean linear history.\n"
-				"4. GitFlow: `main` tracks production releases; `develop` aggregates features; developers branch off `develop` into `feature/name` and merge via pull requests."
-			),
-			"internal_choice_question": {
-				"question": "OR: Analyze Software Testing methodologies in Python applications. Differentiate between Unit Testing, Integration Testing, and End-to-End (E2E) testing. Explain test fixtures and test mocks using `unittest.mock`, and write a complete test case verifying an authenticated API endpoint.",
-				"marks": 5,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Comprehensive testing breakdown across testing pyramid, fixture lifecycle, mocking external I/O with `unittest.mock.patch`, and complete test case code.",
-				"answer_key_detail": (
-					"Marking Scheme (5 Marks Total):\n"
-					"• Testing Pyramid & Types [1 Mark]: Definition and scope of Unit Tests (isolated units), Integration Tests (component interaction), and E2E Tests (user workflows).\n"
-					"• Test Fixtures & Lifecycles [1 Mark]: Setup and teardown methods (`setUp()`, `tearDown()` in `unittest` or `@pytest.fixture`).\n"
-					"• Mocking Principles [1 Mark]: Purpose of replacing external services (HTTP calls, database connections) using `unittest.mock.MagicMock` and `patch()`.\n"
-					"• Code Implementation [1.5 Marks]: Complete test case using `unittest.TestCase` with proper assertions (`assertEqual`, `assertTrue`).\n"
-					"• Test Driven Development (TDD) [0.5 Mark]: Explanation of the Red-Green-Refactor development cycle."
-				),
-				"solution": (
-					"1. Testing Pyramid: Unit tests are numerous, fast, and test single functions in isolation. Integration tests verify interactions between modules (e.g. View + Database). E2E tests test full workflows.\n"
-					"2. Fixtures: Initialize test state before execution and perform teardown to maintain test idempotency.\n"
-					"3. Mocking: `unittest.mock` isolates tests from unreliable or slow third-party APIs by substituting mock objects.\n"
-					"4. Code Example:\n"
-					"```python\n"
-					"import unittest\n"
-					"from unittest.mock import patch\n\n"
-					"class TestUserAPI(unittest.TestCase):\n"
-					"    @patch('my_app.services.fetch_remote_profile')\n"
-					"    def test_profile_lookup(self, mock_fetch):\n"
-					"        mock_fetch.return_value = {'id': 101, 'role': 'Admin'}\n"
-					"        user_data = mock_fetch(101)\n"
-					"        self.assertEqual(user_data['role'], 'Admin')\n"
-					"```"
-				),
+				"solution": "Comprehensive testing combines fast isolated unit tests with mock objects and robust integration tests against realistic database fixtures.",
 			},
 		},
 	]
@@ -1083,387 +1572,142 @@ def _get_python_long_pool(source_tag: str) -> List[Dict[str, Any]]:
 def _get_python_application_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Case Scenario: An e-commerce web application built with Django experiences severe response latency when rendering customer order history. Query profiling reveals that fetching 100 customer orders triggers 101 separate database queries (the N+1 query problem). Diagnose the root cause of this defect and formulate a concrete solution using Django's ORM optimization methods.",
-			"correct_answer": "Diagnosis of un-joined foreign key access inside template loops and solution using `select_related('customer')` or `prefetch_related('items')`.",
+			"question": "Case Study: A Python Full Stack web application experiences catastrophic performance degradation during high-traffic flash sales. Database CPU utilization spikes to 100%, and API response times jump from 80ms to over 12 seconds. Technical investigation reveals redundant identical database queries for product catalog records. Formulate a technical diagnosis and design a high-throughput caching architecture using Redis.",
+			"correct_answer": "Diagnosis of cache stampede and unindexed database queries. Architecture using Redis Cache-Aside pattern with TTL expiration and database indexing.",
 			"marks": 4,
 			"difficulty": "Hard",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (4 Marks Total):\n"
-				"• Sub-part (a) Problem Diagnosis [2 Marks]: Explicitly explains that iterating over 100 order objects while accessing related ForeignKeys (e.g., `order.customer.name`) triggers 1 initial query for orders plus 100 individual queries for each customer.\n"
-				"• Sub-part (b) Technical Remedy & Implementation [2 Marks]: Demonstrates usage of `select_related('customer')` (SQL JOIN) for single-valued relationships or `prefetch_related('items')` for multi-valued relationships, reducing queries from 101 to 1 or 2."
+				"• Sub-part (a) Problem Diagnosis [2 Marks]: Correctly identifies unmitigated database read contention, unindexed foreign key queries, and absence of an in-memory caching tier.\n"
+				"• Sub-part (b) Technical Mitigation [2 Marks]: Concrete architectural design implementing Redis Cache-Aside pattern, setting appropriate TTL, and implementing automated cache invalidation on product updates."
 			),
 			"solution": (
-				"Sub-part (a) Diagnosis (2 Marks):\n"
-				"The N+1 problem occurs when a query fetches N records (e.g., `orders = Order.objects.all()`), and subsequent code accesses a related ForeignKey attribute inside a loop (`for o in orders: print(o.customer.name)`). Django's lazy ORM executes an additional SQL query for each iteration, degrading database throughput.\n\n"
-				"Sub-part (b) Remedy (2 Marks):\n"
-				"Refactor the QuerySet using `select_related`:\n"
-				"```python\n"
-				"optimized_orders = Order.objects.select_related('customer').prefetch_related('order_items').all()\n"
-				"```\n"
-				"`select_related` performs an SQL `INNER JOIN` (1 query total for orders and customers). `prefetch_related` executes one additional query using `IN (...)` for order items, collapsing 101+ queries into exactly 2."
+				"Part (a): Direct database lookups under high concurrent traffic overload relational connection pools and saturated database CPU.\n"
+				"Part (b): Deploy an in-memory Redis caching layer. Implement the Cache-Aside pattern: Check Redis first; on cache miss, query PostgreSQL, populate Redis with a 5-minute TTL, and return results."
 			),
 			"internal_choice_question": {
-				"question": "OR: Case Scenario: A Python microservice application suffers from recurring memory leaks under sustained production load. Investigation identifies that event handlers store circular references to user session instances that are never garbage collected by reference counting alone. Diagnose why reference counting fails and formulate an architectural remedy using weak references (`weakref` module).",
+				"question": "OR: Case Study: A financial web portal built in Python must prevent SQL Injection vulnerabilities across all dynamic search and reporting endpoints. Explain the mechanics of SQL Injection attacks and demonstrate how Django ORM parameterized query generation guarantees security against malicious payloads.",
 				"marks": 4,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Diagnosis of cyclic reference graphs maintaining non-zero `ob_refcnt` and solution utilizing `weakref.ref` or `weakref.WeakValueDictionary`.",
+				"correct_answer": "Explanation of SQL injection mechanisms and parameter binding via prepared statements in Django ORM.",
 				"answer_key_detail": (
-					"Marking Scheme (4 Marks Total):\n"
-					"• Sub-part (a) Problem Diagnosis [2 Marks]: Identifies that when Session references EventHandler and EventHandler references Session, reference counts never drop to 0, preventing immediate deallocation.\n"
-					"• Sub-part (b) Architectural Remedy [2 Marks]: Implements `weakref.ref()` or `weakref.WeakKeyDictionary` allowing sessions to be deallocated naturally when no strong references remain."
+					"• Sub-part (a) Vulnerability Mechanics [2 Marks]: Details how untrusted user input directly concatenated into raw SQL strings allows attackers to alter query logic.\n"
+					"• Sub-part (b) Secure Remediation [2 Marks]: Explains how Django ORM escapes input and utilizes parameterized prepared statements, rendering injected syntax harmless."
 				),
-				"solution": (
-					"Sub-part (a) Diagnosis (2 Marks):\n"
-					"Python's primary memory management is reference counting. When object A points to B and B points to A, their reference counts remain at least 1 even after all outer scope variables are deleted. If generational GC is delayed or objects have legacy `__del__` methods, memory leaks accumulate.\n\n"
-					"Sub-part (b) Remedy (2 Marks):\n"
-					"Break strong reference cycles using the `weakref` module:\n"
-					"```python\n"
-					"import weakref\n"
-					"class EventHandler:\n"
-					"    def __init__(self, session):\n"
-					"        self._session_ref = weakref.ref(session)\n"
-					"    @property\n"
-					"    def session(self):\n"
-					"        return self._session_ref()\n"
-					"```\n"
-					"Weak references allow tracking session objects without incrementing their reference count, enabling immediate garbage collection."
-				),
+				"solution": "Raw SQL concatenation enables attackers to inject syntax (e.g. `' OR 1=1 --`). Django ORM uses parameterized queries where user inputs are treated strictly as data literals rather than executable commands.",
 			},
 		},
 		{
-			"question": "Case Scenario: A digital banking web application encounters race conditions during simultaneous fund withdrawals. When a user with a balance of $100 submits two concurrent withdrawal requests of $80 within milliseconds, both requests read the $100 balance, deduce sufficient funds, and deduct $80, resulting in an illegal negative balance of -$60. Diagnose the concurrency defect and formulate a solution using atomic transactions and row-level locking.",
-			"correct_answer": "Diagnosis of Check-Then-Act race condition and implementation of `transaction.atomic()` with `select_for_update()` in Django ORM.",
+			"question": "Case Study: An e-commerce platform requires background processing for video encoding and invoice PDF generation. Performing these tasks synchronously inside HTTP request handlers causes gateway timeouts (HTTP 504) for clients. Design an asynchronous task worker architecture using Celery, Redis message broker, and Django.",
+			"correct_answer": "Asynchronous task delegation via Celery workers and Redis message queue, returning immediate 202 Accepted HTTP responses to clients.",
 			"marks": 4,
 			"difficulty": "Hard",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (4 Marks Total):\n"
-				"• Sub-part (a) Problem Diagnosis [2 Marks]: Identifies the Check-Then-Act concurrency flaw where interleaved reads occur before writes commit, causing lost updates.\n"
-				"• Sub-part (b) Technical Remedy [2 Marks]: Formulates the database fix using `transaction.atomic()` and `select_for_update()` to enforce exclusive row locks."
+				"• Sub-part (a) Architecture Breakdown [2 Marks]: Decoupling web request handling from heavy computational tasks via a message broker (Redis) and worker pool (Celery).\n"
+				"• Sub-part (b) Client Workflow & State Polling [2 Marks]: Returning immediate HTTP 202 Accepted with task ID, and providing a polling or WebSocket endpoint to report task completion."
 			),
 			"solution": (
-				"Sub-part (a) Concurrency Diagnosis (2 Marks):\n"
-				"This is a classic 'lost update' race condition. Both thread 1 and thread 2 execute `SELECT balance FROM account WHERE id = 1` concurrently, observing $100. Both validate `100 >= 80`. Thread 1 writes $20, and thread 2 immediately overwrites balance to $20 (or drops to -$60 if using relative subtraction).\n\n"
-				"Sub-part (b) Database Remedy (2 Marks):\n"
-				"```python\n"
-				"from django.db import transaction\n\n"
-				"def withdraw(account_id, amount):\n"
-				"    with transaction.atomic():\n"
-				"        account = Account.objects.select_for_update().get(id=account_id)\n"
-				"        if account.balance >= amount:\n"
-				"            account.balance -= amount\n"
-				"            account.save()\n"
-				"            return True\n"
-				"        return False\n"
-				"```\n"
-				"`select_for_update()` executes `SELECT ... FOR UPDATE`, placing an exclusive row-level lock in PostgreSQL/MySQL. The second thread blocks until the first transaction commits, reading the updated balance."
+				"Part (a): Offload intensive operations by defining `@shared_task` in Celery. The web view dispatches `task.delay(args)` to Redis and returns immediately.\n"
+				"Part (b): Celery workers consume tasks from the queue in the background. The client polls a task status endpoint or receives a webhook/WebSocket event upon completion."
 			),
 			"internal_choice_question": {
-				"question": "OR: Case Scenario: A Python backend API endpoint crashes intermittently with `UnboundLocalError: local variable 'total_count' referenced before assignment` during request processing. Diagnose why Python raises this exception for enclosing-scope variables and formulate the fix using the `global` and `nonlocal` keywords.",
+				"question": "OR: Case Study: A collaborative developer team experiences frequent merge conflicts and broken production builds. Formulate a robust Git branching strategy (such as GitFlow or GitHub Flow) and specify automated CI/CD safeguards to enforce code quality before merging into main.",
 				"marks": 4,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Diagnosis of compile-time local variable detection upon assignment and fix utilizing `nonlocal` keyword for nested functions.",
+				"correct_answer": "Feature branching strategy, pull requests with required peer review, automated linters, and CI test pipeline gates.",
 				"answer_key_detail": (
-					"Marking Scheme (4 Marks Total):\n"
-					"• Sub-part (a) Language Semantics Diagnosis [2 Marks]: Explains that Python parses assignment statements at compile-time; if a variable is assigned anywhere inside a function, it is treated as local throughout that entire function.\n"
-					"• Sub-part (b) Code Fix & Explanation [2 Marks]: Demonstrates `nonlocal total_count` (for enclosing functions) or `global total_count` (for module globals)."
+					"• Sub-part (a) Branching Strategy [2 Marks]: Definition of main, develop, and short-lived feature branches with rebase/merge standards.\n"
+					"• Sub-part (b) CI/CD Quality Gates [2 Marks]: Automated pull request verification enforcing PEP 8 linting, unit test execution, and minimum code coverage thresholds."
 				),
-				"solution": (
-					"Sub-part (a) Diagnosis (2 Marks):\n"
-					"In Python, if a variable is assigned a value anywhere within a function (`total_count += 1` translates to `total_count = total_count + 1`), Python marks `total_count` as local to that scope at compile time. When the function tries to read `total_count` on the right side before assignment, it finds the unassigned local variable and raises `UnboundLocalError`.\n\n"
-					"Sub-part (b) Remedy (2 Marks):\n"
-					"```python\n"
-					"def outer_service():\n"
-					"    total_count = 0\n"
-					"    def increment():\n"
-					"        nonlocal total_count\n"
-					"        total_count += 1\n"
-					"        return total_count\n"
-					"    return increment\n"
-					"```\n"
-					"Using `nonlocal` explicitly binds the identifier to the nearest enclosing scope variable, permitting modification without shadowing."
-				),
+				"solution": "Adopt GitHub Flow with short-lived feature branches. Protect the `main` branch with mandatory PR reviews and automated GitHub Actions running linters and test suites.",
 			},
 		},
 		{
-			"question": "Case Scenario: A software development firm is preparing to deploy a full-stack Python web application to production on cloud infrastructure. Outline the complete production deployment architecture incorporating Nginx, Gunicorn (WSGI), PostgreSQL, and environment variable configuration. Explain the distinct responsibility of each layer in handling incoming HTTP client traffic.",
-			"correct_answer": "Full architectural specification: Nginx as reverse proxy/SSL terminator -> Gunicorn as WSGI app server -> Django Python application -> PostgreSQL database.",
+			"question": "Case Study: A RESTful API built in Python needs to implement secure authentication and authorization for multi-tenant users. Compare Session-based authentication with Token-based JSON Web Token (JWT) authentication for web and mobile clients, and evaluate token expiration, revocation, and security best practices.",
+			"correct_answer": "Comparative evaluation of server-side sessions vs stateless JWT tokens, token payload security, and refresh token rotation.",
 			"marks": 4,
 			"difficulty": "Hard",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (4 Marks Total):\n"
-				"• Sub-part (a) Architecture Diagram & Component Responsibilities [2 Marks]: Details Nginx (reverse proxy, TLS termination, static file serving) and Gunicorn (WSGI process supervisor managing Python worker processes).\n"
-				"• Sub-part (b) Security & Data Isolation [2 Marks]: Details database connection pooling with PostgreSQL and environment variable management (Twelve-Factor App) for secrets isolation."
+				"• Sub-part (a) Paradigm Comparison [2 Marks]: Stateful server-side sessions requiring centralized store vs stateless JWTs carrying cryptographically signed claims.\n"
+				"• Sub-part (b) Security & Lifecycle [2 Marks]: Implementation of short-lived Access Tokens (15 min) paired with Refresh Tokens in HTTP-only cookies to mitigate XSS and CSRF."
 			),
 			"solution": (
-				"Sub-part (a) Architectural Layers (2 Marks):\n"
-				"1. Nginx (Reverse Proxy): Sits at the public edge. Handles TLS/SSL termination, buffers slow clients, protects against DDoS attacks, and serves static/media files directly from disk without touching Python.\n"
-				"2. Gunicorn (WSGI Server): Communicates with Nginx via a UNIX socket. Manages a pool of pre-forked Python worker processes (`workers = 2 * CPU_CORES + 1`) to execute Django application code.\n\n"
-				"Sub-part (b) Database & Configuration (2 Marks):\n"
-				"3. PostgreSQL: Provides ACID-compliant relational data persistence. Connection pooling (e.g. PgBouncer) prevents database connection exhaustion.\n"
-				"4. Environment Configuration: Production secrets (`SECRET_KEY`, `DATABASE_URL`) are injected via OS environment variables adhering to the Twelve-Factor App methodology."
+				"Part (a): Stateful sessions require shared Redis storage across cluster nodes. JWTs are stateless, self-contained, and ideal for microservices and mobile apps.\n"
+				"Part (b): Store Access Tokens in memory and Refresh Tokens in secure `HttpOnly`, `SameSite=Strict` cookies with refresh token rotation upon each exchange."
 			),
 			"internal_choice_question": {
-				"question": "OR: Case Scenario: An automated web data extraction pipeline built with Python encounters frequent connection dropouts, HTTP 429 (Too Many Requests) rate-limiting errors, and memory exhaustion when scraping large document repositories. Formulate a robust architecture implementing exponential backoff retry logic, session connection pooling, and streaming downloads.",
+				"question": "OR: Case Study: A data processing service reads CSV files uploaded by external vendors. Malformed rows with invalid types and missing columns intermittently crash the ingestion pipeline. Design a defensive data validation pipeline using Python data classes or Pydantic with automated error reporting.",
 				"marks": 4,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Architecture incorporating `requests.Session` with `HTTPAdapter`, exponential backoff retry strategies, and `stream=True` chunked response handling.",
+				"correct_answer": "Pydantic schema validation with automatic type coercion, row-level error logging, and graceful isolation of corrupted records.",
 				"answer_key_detail": (
-					"Marking Scheme (4 Marks Total):\n"
-					"• Sub-part (a) Network Resilience & Rate Limiting [2 Marks]: Explains exponential backoff algorithms with jitter to handle HTTP 429 and transient 500-series errors.\n"
-					"• Sub-part (b) Connection Pooling & Memory Streaming [2 Marks]: Demonstrates `requests.Session` with urllib3 `Retry` adapter and `response.iter_content(chunk_size)` for constant O(1) memory streaming."
+					"• Sub-part (a) Defensive Schema Design [2 Marks]: Definition of Pydantic BaseModel specifying strict field types, default values, and custom validators.\n"
+					"• Sub-part (b) Fault-Tolerant Pipeline [2 Marks]: Row-by-row validation inside try-except blocks, storing invalid rows in an error log while continuing ingestion."
 				),
-				"solution": (
-					"Sub-part (a) Exponential Backoff (2 Marks):\n"
-					"When receiving 429 or 503, wait $T = \text{base} \times 2^{\text{retry}} + \text{jitter}$ seconds before retrying. This desynchronizes requests, preventing server thundering herds.\n\n"
-					"Sub-part (b) Implementation (2 Marks):\n"
-					"```python\n"
-					"import requests\n"
-					"from urllib3.util import Retry\n"
-					"from requests.adapters import HTTPAdapter\n\n"
-					"session = requests.Session()\n"
-					"retries = Retry(total=5, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])\n"
-					"session.mount('https://', HTTPAdapter(max_retries=retries))\n\n"
-					"with session.get('https://example.com/largefile.zip', stream=True) as resp:\n"
-					"    with open('file.zip', 'wb') as f:\n"
-					"        for chunk in resp.iter_content(chunk_size=8192):\n"
-					"            f.write(chunk)\n"
-					"```"
-				),
+				"solution": "Define a Pydantic schema for expected columns. During ingestion, parse each row into the model; valid rows are batched for database insertion, while rejected rows are appended to an error audit report.",
 			},
 		},
 	]
 
 
 # =====================================================================
-# COMPUTER SCIENCE & ARCHITECTURE QUESTION POOL
+# COMPUTER SCIENCE & SYSTEMS ARCHITECTURE QUESTION POOL
 # =====================================================================
 
 def _get_cs_mcq_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Which component of the Central Processing Unit (CPU) is directly responsible for executing mathematical calculations and logical comparisons?",
-			"options": ["(A) Control Unit (CU)", "(B) Arithmetic Logic Unit (ALU)", "(C) Program Counter (PC)", "(D) Memory Address Register (MAR)"],
-			"correct_answer": "(B) Arithmetic Logic Unit (ALU)",
+			"question": "Which CPU component performs basic arithmetic calculations and logical bitwise operations?",
+			"options": ["(A) Arithmetic Logic Unit (ALU)", "(B) Control Unit (CU)", "(C) Program Counter (PC)", "(D) Memory Address Register (MAR)"],
+			"correct_answer": "(A) Arithmetic Logic Unit (ALU)",
 			"marks": 1,
 			"difficulty": "Easy",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Arithmetic Logic Unit (ALU). Evaluation Criterion: Full 1 mark awarded for identifying the ALU as the primary sub-component of the CPU that carries out integer arithmetic and logical bitwise operations.",
-			"solution": "The ALU performs arithmetic (addition, subtraction) and logic (AND, OR, NOT, comparisons). The Control Unit fetches and decodes instructions, while registers provide temporary high-speed storage.",
+			"answer_key_detail": "[1 Mark] Correct Option: (A) Arithmetic Logic Unit (ALU). Evaluation Criterion: Full 1 mark awarded for identifying the ALU.",
+			"solution": "The Arithmetic Logic Unit (ALU) executes arithmetic operations (addition, subtraction) and logical bitwise evaluations (AND, OR, NOT).",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "What is the defining characteristic of the classic Von Neumann computer architecture?",
-			"options": ["(A) Physically separate physical memories and buses for program instructions and data", "(B) Shared memory space and common system bus for both instructions and data", "(C) Elimination of the Control Unit in favor of direct hardware interrupts", "(D) Exclusive reliance on asynchronous analog vacuum circuits"],
-			"correct_answer": "(B) Shared memory space and common system bus for both instructions and data",
+			"question": "What is the primary function of the Program Counter (PC) register in CPU execution?",
+			"options": ["(A) Stores the result of the last arithmetic operation", "(B) Holds the memory address of the next instruction to be fetched", "(C) Decodes opcode into control signals", "(D) Stores system interrupt flags"],
+			"correct_answer": "(B) Holds the memory address of the next instruction to be fetched",
 			"marks": 1,
 			"difficulty": "Easy",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Shared memory space and common system bus for both instructions and data. Evaluation Criterion: Full 1 mark awarded for articulating the stored-program concept where instructions and data share primary memory.",
-			"solution": "The Von Neumann architecture features a stored-program model where both instructions and operational data reside in the same physical memory, leading to the Von Neumann bottleneck.",
+			"answer_key_detail": "[1 Mark] Correct Option: (B). Evaluation Criterion: Full 1 mark awarded for identifying the PC as holding the address of the next instruction.",
+			"solution": "The Program Counter (PC) stores the address of the next instruction in memory and increments automatically after each fetch cycle.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Which dedicated internal CPU register stores the memory address of the next instruction waiting to be fetched and executed?",
-			"options": ["(A) Accumulator (ACC)", "(B) Instruction Register (IR)", "(C) Program Counter (PC)", "(D) Memory Data Register (MDR)"],
-			"correct_answer": "(C) Program Counter (PC)",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (C) Program Counter (PC). Evaluation Criterion: Full 1 mark awarded for identifying the Program Counter (PC) as the register holding the address of the next sequential instruction.",
-			"solution": "The Program Counter (PC) holds the memory address of the next instruction to fetch. Once fetched, the PC automatically increments unless a branch or jump occurs.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the average-case time complexity of the QuickSort algorithm when sorting an array of n elements?",
-			"options": ["(A) O(n)", "(B) O(n log n)", "(C) O(n^2)", "(D) O(log n)"],
-			"correct_answer": "(B) O(n log n)",
+			"question": "Which sorting algorithm exhibits an average-case time complexity of O(n log n) and worst-case of O(n^2)?",
+			"options": ["(A) MergeSort", "(B) QuickSort", "(C) BubbleSort", "(D) HeapSort"],
+			"correct_answer": "(B) QuickSort",
 			"marks": 1,
 			"difficulty": "Medium",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) O(n log n). Evaluation Criterion: Full 1 mark awarded for stating QuickSort's average-case asymptotic time complexity of O(n log n).",
-			"solution": "QuickSort uses a divide-and-conquer strategy. On average, it divides the array into two roughly equal halves, producing log n levels of recursion with O(n) partitioning work per level, yielding O(n log n).",
+			"answer_key_detail": "[1 Mark] Correct Option: (B) QuickSort. Evaluation Criterion: Full 1 mark awarded for identifying QuickSort.",
+			"solution": "QuickSort operates in O(n log n) average time using partitioning. If poor pivots are chosen consistently, complexity degrades to O(n^2).",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Under what condition does the standard QuickSort algorithm with first-element pivot selection exhibit its worst-case time complexity of O(n^2)?",
-			"options": ["(A) When elements are randomly shuffled with uniform distribution", "(B) When the input array is already sorted in ascending or descending order", "(C) When all array elements are powers of two", "(D) When the array length is a prime number"],
-			"correct_answer": "(B) When the input array is already sorted in ascending or descending order",
+			"question": "Which condition is NOT one of the four necessary Coffman conditions required for a system deadlock to occur?",
+			"options": ["(A) Mutual Exclusion", "(B) Hold and Wait", "(C) Preemptive Resource Reallocation", "(D) Circular Wait"],
+			"correct_answer": "(C) Preemptive Resource Reallocation",
 			"marks": 1,
 			"difficulty": "Medium",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) When the input array is already sorted in ascending or descending order. Evaluation Criterion: Full 1 mark awarded for identifying that sorted inputs produce unbalanced partitions of size 1 and n-1.",
-			"solution": "If the array is already sorted, picking the first element creates maximally unbalanced partitions: 0 elements on one side and n-1 on the other, degrading recursion depth to n and time to O(n^2).",
+			"answer_key_detail": "[1 Mark] Correct Option: (C). Evaluation Criterion: Full 1 mark awarded for recognizing 'No Preemption' is the necessary condition.",
+			"solution": "The 4 Coffman conditions for deadlock are: Mutual Exclusion, Hold and Wait, No Preemption, and Circular Wait. Preemption breaks deadlock.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "What is the worst-case time complexity of the BubbleSort algorithm?",
-			"options": ["(A) O(1)", "(B) O(log n)", "(C) O(n log n)", "(D) O(n^2)"],
-			"correct_answer": "(D) O(n^2)",
+			"question": "In the memory hierarchy, which storage level offers the fastest access latency?",
+			"options": ["(A) Main RAM", "(B) L1 CPU Cache", "(C) L3 CPU Cache", "(D) Solid State Drive (NVMe)"],
+			"correct_answer": "(B) L1 CPU Cache",
 			"marks": 1,
 			"difficulty": "Easy",
 			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (D) O(n^2). Evaluation Criterion: Full 1 mark awarded for stating that BubbleSort performs n*(n-1)/2 comparisons in the worst case, yielding O(n^2).",
-			"solution": "In reverse-sorted inputs, BubbleSort compares and swaps every adjacent pair across n passes, requiring n*(n-1)/2 comparisons, which is O(n^2).",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "In the memory hierarchy of modern computing systems, which memory level provides the fastest access latency?",
-			"options": ["(A) Main Memory (DRAM)", "(B) Solid State Drive (NVMe SSD)", "(C) CPU Registers", "(D) Level 3 (L3) Cache"],
-			"correct_answer": "(C) CPU Registers",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (C) CPU Registers. Evaluation Criterion: Full 1 mark awarded for identifying internal CPU registers as the fastest storage located directly inside CPU processing pipelines.",
-			"solution": "CPU Registers can be accessed in a single CPU clock cycle (sub-nanosecond). L1/L2/L3 caches take 3-40 cycles, DRAM takes ~100-200 cycles, and SSDs take microseconds.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What four sequential phases constitute the classic CPU Instruction Cycle?",
-			"options": ["(A) Compile, Assemble, Link, Load", "(B) Fetch, Decode, Execute, Store", "(C) Push, Pop, Peek, Clear", "(D) Input, Process, Output, Archive"],
-			"correct_answer": "(B) Fetch, Decode, Execute, Store",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Fetch, Decode, Execute, Store. Evaluation Criterion: Full 1 mark awarded for identifying the 4 stages of the machine instruction execution cycle.",
-			"solution": "The CPU fetches the instruction from memory, decodes opcodes in the Control Unit, executes signals via the ALU/datapath, and stores (writes back) results to registers or RAM.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Which computer architecture eliminates the Von Neumann bottleneck by employing separate physical buses and memory units for instructions and data?",
-			"options": ["(A) Harvard Architecture", "(B) Princeton Architecture", "(C) Turing Machine", "(D) CISC Monolithic Architecture"],
-			"correct_answer": "(A) Harvard Architecture",
-			"marks": 1,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (A) Harvard Architecture. Evaluation Criterion: Full 1 mark awarded for identifying Harvard architecture with isolated instruction and data buses.",
-			"solution": "Harvard architecture provides separate memory and signal buses for code and data, allowing simultaneous instruction fetch and data read/write without bus contention.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What type of data structure operates on a Last-In, First-Out (LIFO) access principle?",
-			"options": ["(A) Queue", "(B) Stack", "(C) Hash Map", "(D) Binary Search Tree"],
-			"correct_answer": "(B) Stack",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Stack. Evaluation Criterion: Full 1 mark awarded for identifying Stack as the LIFO structure supporting push and pop operations.",
-			"solution": "A Stack operates on LIFO (Last-In, First-Out), where the most recently pushed element is the first popped. Queues operate on FIFO (First-In, First-Out).",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What does the term 'locality of reference' refer to in the context of computer cache design?",
-			"options": ["(A) Translating IP addresses to physical MAC addresses", "(B) The tendency of processors to access the same memory locations repeatedly (temporal) or nearby locations (spatial)", "(C) Restricting memory read operations strictly to regional cloud data centers", "(D) Allocating contiguous disk blocks during filesystem formatting"],
-			"correct_answer": "(B) The tendency of processors to access the same memory locations repeatedly (temporal) or nearby locations (spatial)",
-			"marks": 1,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Locality of Reference. Evaluation Criterion: Full 1 mark awarded for defining temporal locality (recently accessed items) and spatial locality (neighboring items).",
-			"solution": "Cache memory efficiency is founded on locality of reference: temporal locality (accessed data will be accessed again soon) and spatial locality (adjacent memory addresses will be accessed soon).",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Which system bus is responsible for transmitting memory addresses from the CPU to main memory and peripheral controllers?",
-			"options": ["(A) Data Bus", "(B) Address Bus", "(C) Control Bus", "(D) Power Bus"],
-			"correct_answer": "(B) Address Bus",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Address Bus. Evaluation Criterion: Full 1 mark awarded for identifying the Address Bus as the unidirectional bus specifying target memory locations.",
-			"solution": "The Address Bus carries memory addresses from the CPU to memory. The Data Bus carries actual data bidirectionally. The Control Bus transmits timing and command signals.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the time complexity of searching for an element in a balanced Binary Search Tree (BST) containing n nodes?",
-			"options": ["(A) O(1)", "(B) O(log n)", "(C) O(n)", "(D) O(n log n)"],
-			"correct_answer": "(B) O(log n)",
-			"marks": 1,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) O(log n). Evaluation Criterion: Full 1 mark awarded for identifying logarithmic O(log n) search time in balanced binary search trees.",
-			"solution": "In a balanced BST (e.g. AVL, Red-Black), the tree height is log2(n). Each comparison halves the remaining search space, yielding O(log n) search complexity.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Which register holds the instruction currently being decoded and executed by the Control Unit?",
-			"options": ["(A) Instruction Register (IR)", "(B) Program Counter (PC)", "(C) Memory Buffer Register (MBR)", "(D) Status Flag Register"],
-			"correct_answer": "(A) Instruction Register (IR)",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (A) Instruction Register (IR). Evaluation Criterion: Full 1 mark awarded for identifying the IR as holding the active instruction during decoding.",
-			"solution": "Once an instruction is fetched from memory via the MDR, it is placed into the Instruction Register (IR) where its opcode and operands are decoded by the Control Unit.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What algorithm design paradigm is utilized by MergeSort and QuickSort?",
-			"options": ["(A) Greedy Approach", "(B) Dynamic Programming", "(C) Divide and Conquer", "(D) Backtracking"],
-			"correct_answer": "(C) Divide and Conquer",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (C) Divide and Conquer. Evaluation Criterion: Full 1 mark awarded for identifying the Divide and Conquer paradigm (divide, conquer subproblems, combine).",
-			"solution": "Divide and Conquer breaks a problem into smaller subproblems of the same type, solves them recursively, and combines their solutions to solve the original problem.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the primary function of the Control Unit (CU) inside the CPU?",
-			"options": ["(A) Storing operating system files permanently on disk", "(B) Directing and coordinating operations of the CPU by fetching, decoding, and generating control signals", "(C) Cooling the microprocessor during thermal throttling", "(D) Converting optical network packets into audio signals"],
-			"correct_answer": "(B) Directing and coordinating operations of the CPU by fetching, decoding, and generating control signals",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Directing and coordinating operations of the CPU. Evaluation Criterion: Full 1 mark awarded for identifying the Control Unit's role in orchestrating instruction dispatch.",
-			"solution": "The Control Unit directs the flow of data through the CPU. It manages the fetch-decode-execute cycle and issues timing/control signals to the ALU, registers, and memory.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Which sorting algorithm is guaranteed to be stable and have an O(n log n) worst-case time complexity?",
-			"options": ["(A) QuickSort", "(B) HeapSort", "(C) MergeSort", "(D) SelectionSort"],
-			"correct_answer": "(C) MergeSort",
-			"marks": 1,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (C) MergeSort. Evaluation Criterion: Full 1 mark awarded for recognizing MergeSort preserves relative order of duplicate elements with O(n log n) worst case.",
-			"solution": "MergeSort divides the array in half and merges sorted halves, maintaining O(n log n) in best, average, and worst cases, and is stable (equal keys maintain initial order).",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the purpose of the Memory Address Register (MAR)?",
-			"options": ["(A) Holds the data read from or written to memory", "(B) Holds the memory address of the location in main memory currently being read from or written to", "(C) Stores the CPU clock frequency", "(D) Manages graphical rendering shaders"],
-			"correct_answer": "(B) Holds the memory address of the location in main memory currently being read from or written to",
-			"marks": 1,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Memory Address Register (MAR). Evaluation Criterion: Full 1 mark awarded for identifying the MAR as connected to the address bus holding the target address.",
-			"solution": "The MAR holds the address on the address bus where data is to be read or written. The MDR (Memory Data Register) holds the actual data payload.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Which of the following describes the 'Von Neumann Bottleneck'?",
-			"options": ["(A) Inability of the CPU to perform floating point division", "(B) Throughput limitation caused by the shared bus between CPU and memory being slower than CPU execution speeds", "(C) Thermal degradation of silicon transistors under high voltages", "(D) Limited hard drive capacity on personal workstations"],
-			"correct_answer": "(B) Throughput limitation caused by the shared bus between CPU and memory being slower than CPU execution speeds",
-			"marks": 1,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) Von Neumann Bottleneck. Evaluation Criterion: Full 1 mark awarded for identifying the data transfer throughput constraint between CPU and RAM.",
-			"solution": "The Von Neumann bottleneck occurs because CPU processing speeds vastly outpace the throughput of the shared bus connecting memory, causing the CPU to idle waiting for instructions or data.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the best-case time complexity of an optimized BubbleSort algorithm equipped with a swapped flag on an already-sorted array?",
-			"options": ["(A) O(1)", "(B) O(n)", "(C) O(n log n)", "(D) O(n^2)"],
-			"correct_answer": "(B) O(n)",
-			"marks": 1,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": "[1 Mark] Correct Option: (B) O(n). Evaluation Criterion: Full 1 mark awarded for noting that a swapped flag detects zero swaps on pass 1, terminating in O(n) linear time.",
-			"solution": "An optimized BubbleSort sets `swapped = False` before each pass. If no swaps occur during the first pass of n-1 comparisons, the array is already sorted, terminating in O(n) time.",
+			"answer_key_detail": "[1 Mark] Correct Option: (B) L1 CPU Cache. Evaluation Criterion: Full 1 mark awarded for identifying L1 cache.",
+			"solution": "L1 cache resides directly on the CPU core and operates with sub-nanosecond access latency.",
 			"internal_choice_question": None,
 		},
 	]
@@ -1472,87 +1716,29 @@ def _get_cs_mcq_pool(source_tag: str) -> List[Dict[str, Any]]:
 def _get_cs_vsa_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Differentiate between the primary roles of the Arithmetic Logic Unit (ALU) and the Control Unit (CU) in a computer processor.",
-			"correct_answer": "The ALU performs mathematical calculations and logical comparisons; the Control Unit fetches, decodes instructions, and orchestrates CPU timing and data flow.",
+			"question": "Differentiate between a Process and a Thread in operating system execution.",
+			"correct_answer": "A process is an isolated executing program with its own dedicated memory space; a thread is a lightweight execution unit sharing memory with sibling threads.",
 			"marks": 2,
 			"difficulty": "Easy",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Precise technical definition of the ALU (arithmetic computation, bitwise operations, logical comparisons).\n"
-				"• Point 2 [1 Mark]: Precise technical definition of the Control Unit (instruction fetch/decode, clock orchestration, control signals)."
+				"• Point 1 [1 Mark]: Memory isolation: Processes have independent virtual address spaces.\n"
+				"• Point 2 [1 Mark]: Resource sharing: Threads within the same process share heap, code, and global data."
 			),
-			"solution": "The ALU is the calculating engine of the processor, executing operations like addition, subtraction, AND, and OR. The Control Unit acts as the supervisor, fetching opcodes from memory, decoding them into micro-operations, and issuing control signals across the datapath.",
+			"solution": "Processes are heavyweight with separate memory maps. Threads share the process address space, enabling low-overhead communication.",
 			"internal_choice_question": None,
 		},
 		{
-			"question": "Explain the stored-program concept in computer architecture and name the scientist who formalized it.",
-			"correct_answer": "The stored-program concept stores program instructions and operational data in the same electronic read/write memory; formalized by John von Neumann.",
+			"question": "State the four stages comprising the classic Von Neumann CPU Instruction Cycle.",
+			"correct_answer": "1. Fetch, 2. Decode, 3. Execute, 4. Writeback / Store.",
 			"marks": 2,
 			"difficulty": "Easy",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Definition of the stored-program concept (code and data coexisting in primary memory).\n"
-				"• Point 2 [1 Mark]: Identification of John von Neumann (1945 First Draft of a Report on the EDVAC)."
+				"• Point 1 [1 Mark]: Identifies Fetch and Decode stages correctly.\n"
+				"• Point 2 [1 Mark]: Identifies Execute and Writeback/Store stages correctly."
 			),
-			"solution": "Before the stored-program concept, computers were hardwired or reprogrammed with patch cords. The stored-program concept stores instructions in binary form in memory alongside data, enabling computers to reprogram themselves dynamically. Formalized by John von Neumann in 1945.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Describe the function of the Program Counter (PC) and explain how its value changes during normal linear execution versus a branch instruction.",
-			"correct_answer": "The PC stores the address of the next instruction; it increments linearly during normal execution and is loaded with a target branch address during jumps.",
-			"marks": 2,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Explains normal linear operation where the PC increments by instruction length (e.g. +4 bytes).\n"
-				"• Point 2 [1 Mark]: Explains jump/branch operation where the target address overwrites the PC."
-			),
-			"solution": "The Program Counter points to the next memory address to fetch. In sequential execution, it increments automatically after each fetch. If a conditional branch or jump is executed, the Control Unit overwrites the PC with the target jump address.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What is the Von Neumann bottleneck and how do modern computer architectures mitigate its performance impact?",
-			"correct_answer": "The throughput restriction between CPU and memory across a shared bus; mitigated by multi-level CPU cache hierarchies (L1, L2, L3) and branch prediction.",
-			"marks": 2,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Explanation of the bottleneck (CPU speed significantly exceeds memory bus throughput).\n"
-				"• Point 2 [1 Mark]: Concrete mitigation strategy (integration of high-speed SRAM caches and prefetching)."
-			),
-			"solution": "The Von Neumann bottleneck describes the delay where a fast CPU idles waiting for memory transfers over a single shared bus. Modern architectures mitigate this by adding high-speed L1/L2/L3 SRAM caches on the CPU die and using hardware prefetchers.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Explain the divide-and-conquer strategy as implemented in the QuickSort algorithm.",
-			"correct_answer": "QuickSort selects a pivot, partitions elements into smaller and larger subsets (Divide), sorts each subset recursively (Conquer), requiring no explicit Combine step.",
-			"marks": 2,
-			"difficulty": "Easy",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Division step (pivot selection and partitioning of elements around the pivot).\n"
-				"• Point 2 [1 Mark]: Recursive conquer step (independent recursive calls on left and right sub-arrays)."
-			),
-			"solution": "In QuickSort, the Divide step picks a pivot element and rearranges the array so elements less than the pivot precede it and elements greater follow it. The Conquer step recursively applies QuickSort to both sub-arrays. Because partitioning happens in-place, combining is trivial.",
-			"internal_choice_question": None,
-		},
-		{
-			"question": "What are CPU registers, and why are they constructed from Static RAM (SRAM) instead of Dynamic RAM (DRAM)?",
-			"correct_answer": "Internal high-speed memory cells directly accessible by CPU execution units; built using flip-flops/SRAM for nanosecond access without refresh cycles.",
-			"marks": 2,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (2 Marks Total):\n"
-				"• Point 1 [1 Mark]: Definition of registers as on-chip storage holding immediate operands and processor state.\n"
-				"• Point 2 [1 Mark]: Distinction between SRAM (fast flip-flops, no refresh required) and DRAM (capacitors requiring periodic refresh cycles)."
-			),
-			"solution": "Registers are small, ultrafast storage locations built directly into the CPU core. They use SRAM (bistable flip-flop circuits) to operate at CPU clock speeds (GHz frequencies). DRAM uses capacitive storage that requires periodic refresh cycles, making it too slow for register operations.",
+			"solution": "The CPU fetches the instruction from RAM, decodes opcode into control signals, executes the instruction, and writes results back to memory or registers.",
 			"internal_choice_question": None,
 		},
 	]
@@ -1561,60 +1747,17 @@ def _get_cs_vsa_pool(source_tag: str) -> List[Dict[str, Any]]:
 def _get_cs_short_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Explain the three classic stages of the CPU instruction cycle: Fetch, Decode, and Execute, detailing the role of the PC, MAR, MDR, and IR during each phase.",
-			"correct_answer": "Fetch loads the instruction from memory into IR via MAR/MDR and increments PC; Decode interprets opcodes in CU; Execute triggers ALU and datapath signals.",
+			"question": "Explain the concept of Virtual Memory and how Paging eliminates external memory fragmentation.",
+			"correct_answer": "Virtual memory maps virtual addresses to physical frames via page tables, allowing non-contiguous allocation and eliminating external fragmentation.",
 			"marks": 3,
 			"difficulty": "Medium",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Fetch Phase: PC address placed on MAR -> data read over data bus into MDR -> transferred to IR; PC incremented.\n"
-				"• Point 2 [1 Mark]: Decode Phase: Control Unit decodes opcodes and addressing modes in IR to generate control signals.\n"
-				"• Point 3 [1 Mark]: Execute Phase: ALU performs operations, registers receive results, or data is stored back to memory."
+				"• Point 1 [1 Mark]: Virtual Memory abstraction: Decoupling process address space from physical RAM.\n"
+				"• Point 2 [1 Mark]: Fixed-size paging: Dividing virtual memory into pages and physical memory into identical frames.\n"
+				"• Point 3 [1 Mark]: External fragmentation mitigation: Because any free frame can hold any page, external fragmentation is eliminated."
 			),
-			"solution": (
-				"1. Fetch Phase (1 Mark): The Program Counter (PC) copies its address to the Memory Address Register (MAR). The Control Unit signals a memory read, loading the instruction into the Memory Data Register (MDR), which forwards it to the Instruction Register (IR). PC increments.\n"
-				"2. Decode Phase (1 Mark): The Control Unit analyzes the opcode in the IR to determine the operation and readies operand addresses.\n"
-				"3. Execute Phase (1 Mark): The ALU and data registers execute the instruction, saving the output to the accumulator or main memory."
-			),
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Compare QuickSort and BubbleSort algorithms. Detail their average-case time complexities, worst-case time complexities, and memory requirements.",
-			"correct_answer": "QuickSort: Average O(n log n), Worst O(n^2), Space O(log n). BubbleSort: Average O(n^2), Worst O(n^2), Space O(1).",
-			"marks": 3,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Time complexity contrast (QuickSort O(n log n) average vs BubbleSort O(n^2) average).\n"
-				"• Point 2 [1 Mark]: Worst-case analysis (both are O(n^2), but QuickSort degrades only on degenerate pivot selection).\n"
-				"• Point 3 [1 Mark]: Space complexity and stability (QuickSort requires O(log n) stack space and is unstable; BubbleSort is in-place O(1) and stable)."
-			),
-			"solution": (
-				"1. Average Time: QuickSort operates in O(n log n) by partitioning; BubbleSort operates in O(n^2) by repeatedly comparing adjacent elements.\n"
-				"2. Worst-case Time: Both exhibit O(n^2) worst case. In QuickSort, this occurs when partitions are maximally unbalanced. In BubbleSort, it occurs when elements are reversed.\n"
-				"3. Auxiliary Space: BubbleSort is strictly in-place with O(1) space. QuickSort requires O(log n) auxiliary stack space for recursion."
-			),
-			"internal_choice_question": None,
-		},
-		{
-			"question": "Analyze the Memory Hierarchy in computer systems. Explain the trade-offs between access speed, storage capacity, and manufacturing cost across Registers, Caches, RAM, and Secondary Storage.",
-			"correct_answer": "As you move from Registers down to Secondary Storage, access latency increases, capacity increases, and cost per bit decreases dramatically.",
-			"marks": 3,
-			"difficulty": "Medium",
-			"source": source_tag,
-			"answer_key_detail": (
-				"Marking Scheme (3 Marks Total):\n"
-				"• Point 1 [1 Mark]: Speed hierarchy ranking (Registers < L1 Cache < L2 Cache < L3 Cache < DRAM < SSD/HDD).\n"
-				"• Point 2 [1 Mark]: Capacity and cost inversion (higher speed levels have tiny capacity and high cost; lower levels provide terabytes at low cost).\n"
-				"• Point 3 [1 Mark]: Architectural rationale (caches exploit temporal and spatial locality to give the illusion of memory that is both large and fast)."
-			),
-			"solution": (
-				"1. Latency: Registers (~0.5 ns), L1 Cache (~1 ns), L2 Cache (~4 ns), L3 Cache (~15 ns), Main RAM (~60 ns), NVMe SSD (~25,000 ns).\n"
-				"2. Trade-offs: SRAM used in caches requires 6 transistors per bit, making it fast but physically large and expensive. DRAM uses 1 transistor and 1 capacitor, achieving density at lower cost.\n"
-				"3. Purpose: By staging hot data in small, ultrafast caches, the CPU achieves high effective memory access times without needing expensive SRAM for the entire system memory."
-			),
+			"solution": "Virtual memory allows programs to execute without requiring contiguous physical memory allocations, mapped dynamically via Page Tables and the MMU.",
 			"internal_choice_question": None,
 		},
 	]
@@ -1623,43 +1766,31 @@ def _get_cs_short_pool(source_tag: str) -> List[Dict[str, Any]]:
 def _get_cs_long_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Analyze the Von Neumann architecture in detail. Explain the roles and interactions between the CPU, Main Memory, and the System Bus (Data, Address, and Control buses). Discuss the architectural origin of the Von Neumann bottleneck and detail how modern microprocessors mitigate memory latency.",
-			"correct_answer": "Comprehensive structural analysis of Von Neumann architecture, tripartite bus system, memory bottleneck analysis, and modern cache mitigation.",
+			"question": "Provide a comprehensive architectural analysis of CPU Cache Memory and Cache Coherence in modern multi-core processors. Detail cache hierarchy (L1, L2, L3), cache mapping policies (Direct-Mapped vs Set-Associative), and explain the MESI protocol for maintaining coherence across core caches.",
+			"correct_answer": "Complete analysis of L1/L2/L3 cache hierarchy, set-associative mapping, cache miss classifications, and MESI protocol states.",
 			"marks": 5,
 			"difficulty": "Hard",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (5 Marks Total):\n"
-				"• Theoretical Principles & Stored-Program Concept [1 Mark]: Formal definition of Von Neumann architecture with shared memory for data and instructions.\n"
-				"• System Bus Structure & Mechanics [1.5 Marks]: Detailed roles of the Address Bus (unidirectional memory addressing), Data Bus (bidirectional data transport), and Control Bus (timing/read/write signals).\n"
-				"• The Von Neumann Bottleneck [1 Mark]: In-depth explanation of bus contention where instruction fetching and data transfers cannot occur simultaneously.\n"
-				"• Modern Hardware Mitigations [1.5 Marks]: Discussion of multi-tier on-die SRAM caches (L1 Instruction & L1 Data separation), prefetching algorithms, and branch prediction."
+				"• Cache Hierarchy & Latency [1 Mark]: Organization of private L1/L2 per core and shared L3 cache.\n"
+				"• Cache Mapping & Misses [1 Mark]: Direct-mapped vs n-way Set-Associative mapping; Compulsory, Capacity, and Conflict misses.\n"
+				"• MESI Protocol States [1 Mark]: Modified, Exclusive, Shared, and Invalid state transitions.\n"
+				"• Write Policies [1 Mark]: Write-Through vs Write-Back and Write-Allocate mechanics.\n"
+				"• False Sharing & Optimization [1 Mark]: Cache line bouncing and data alignment techniques."
 			),
-			"solution": (
-				"1. Core Principles: The Von Neumann architecture unifies code and data inside a single read-write memory address space.\n"
-				"2. System Buses: The Address Bus transmits target locations from CPU to RAM. The Data Bus transfers actual instruction words and operands bidirectionally. The Control Bus transmits control signals (READ, WRITE, CLOCK, INTERRUPT).\n"
-				"3. The Bottleneck: Because instructions and data share the same bus, the CPU cannot read an instruction and write data simultaneously. Bus throughput is bounded, stalling CPU execution.\n"
-				"4. Mitigations: Modern CPUs implement a modified Harvard architecture internally: on-die L1 cache is split into dedicated L1-Instruction and L1-Data caches, with hardware prefetchers loading data blocks ahead of execution."
-			),
+			"solution": "Modern CPUs use multi-level caches to bridge the CPU-DRAM speed gap. The MESI protocol maintains memory consistency across cores via snooping and state transitions.",
 			"internal_choice_question": {
-				"question": "OR: Compare the Von Neumann architecture with the Harvard architecture. Detail their structural differences regarding bus pathways, analyze how instruction pipelining benefits from separate buses, and evaluate their real-world usage in general-purpose computing versus embedded Digital Signal Processors (DSPs).",
+				"question": "OR: Analyze Deadlock Detection and Avoidance in Operating Systems. Detail the Banker's Algorithm with resource-allocation matrices, evaluate safe vs unsafe system states, and contrast avoidance with deadlock prevention techniques.",
 				"marks": 5,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Complete comparative evaluation of shared vs independent buses, pipelining hazards elimination, and domain applications in PCs vs DSPs.",
+				"correct_answer": "Banker's Algorithm specification, safe state analysis, resource allocation matrices, and Coffman condition disruption.",
 				"answer_key_detail": (
-					"Marking Scheme (5 Marks Total):\n"
-					"• Structural Architectural Differences [1.5 Marks]: Contrasting shared memory/bus in Von Neumann with independent code/data memories and dual bus pathways in Harvard.\n"
-					"• Pipelining Performance [1.5 Marks]: How separate buses eliminate structural pipeline hazards by allowing concurrent instruction fetch and data read/write.\n"
-					"• Circuit Complexity & Flexibility [1 Mark]: Trade-offs between memory utilization flexibility in Von Neumann vs fixed memory partitions and increased pin counts in Harvard.\n"
-					"• Industry Applications [1 Mark]: General-purpose microprocessors (x86/ARM) using Von Neumann/hybrid models vs DSPs and microcontrollers (AVR/PIC) using pure Harvard."
+					"• Theoretical Foundations [1 Mark]: Definition of deadlock and Coffman conditions.\n"
+					"• Banker's Algorithm Matrices [1 Mark]: Allocation, Max, Available, and Need matrices.\n"
+					"• Safe State Verification [1 Mark]: Step-by-step simulation demonstrating whether a request can be granted safely.\n"
+					"• Prevention vs Avoidance [1 Mark]: Static restriction (prevention) vs dynamic runtime checking (avoidance).\n"
+					"• Real-World Trade-Offs [1 Mark]: Overhead of tracking maximum resource claims in modern operating systems."
 				),
-				"solution": (
-					"1. Structure: Harvard architecture provides distinct memory units and buses for instructions and data. Von Neumann shares both.\n"
-					"2. Pipelining Impact: In a classic 5-stage pipeline, the Fetch stage reads instructions while the Memory stage reads/writes data. In Von Neumann, this creates a structural hazard (both stages demand the bus). Harvard executes both concurrently without stalling.\n"
-					"3. Trade-offs: Harvard requires more silicon area, wiring, and pins. If instruction memory is empty, data cannot utilize that space.\n"
-					"4. Applications: Embedded systems and DSPs (e.g. ARM Cortex-M, Texas Instruments DSPs) use Harvard for deterministic real-time throughput. Personal computers use modified Harvard internally and Von Neumann externally."
-				),
+				"solution": "The Banker's Algorithm tests for safety by simulating the allocation of predetermined maximum possible amounts of all resources, ensuring circular wait cannot develop.",
 			},
 		},
 	]
@@ -1668,42 +1799,281 @@ def _get_cs_long_pool(source_tag: str) -> List[Dict[str, Any]]:
 def _get_cs_application_pool(source_tag: str) -> List[Dict[str, Any]]:
 	return [
 		{
-			"question": "Case Scenario: A software system sorting high-volume real-time telemetry data crashes due to recursion stack overflow when executing QuickSort on datasets that are already sorted in ascending order. Diagnose the mathematical and algorithmic root cause of this failure, and formulate an architectural remedy using randomized pivot selection or hybrid Introsort.",
-			"correct_answer": "Diagnosis of O(n) recursion depth on sorted arrays with fixed pivot, and remedy using median-of-three or randomized pivot selection and recursion limits.",
+			"question": "Case Scenario: A multi-threaded storage service experiences high latency and lock contention when multiple worker threads concurrently append entries to a shared transaction log. Formulate an architectural strategy using lock-free ring buffers or read-copy-update (RCU) to maximize throughput.",
+			"correct_answer": "Implementation of lock-free circular ring buffer using atomic compare-and-swap (CAS) operations.",
 			"marks": 4,
 			"difficulty": "Hard",
 			"source": source_tag,
 			"answer_key_detail": (
-				"Marking Scheme (4 Marks Total):\n"
-				"• Sub-part (a) Algorithmic Diagnosis [2 Marks]: Explains that picking the first/last element on sorted data creates partitions of size 0 and n-1, causing recursion depth to degrade from O(log n) to O(n), exhausting call stack frames.\n"
-				"• Sub-part (b) Technical Mitigation [2 Marks]: Proposes Randomized Pivot Selection or Median-of-Three pivot selection, or switching to Introsort (which falls back to HeapSort when recursion depth exceeds 2*log(n))."
+				"• Sub-part (a) Contention Diagnosis [2 Marks]: Analyzes thread blocking and cache invalidation under mutex locks.\n"
+				"• Sub-part (b) Lock-Free Remediation [2 Marks]: Designs single-producer single-consumer or multi-producer ring buffer using atomic CAS pointers."
 			),
-			"solution": (
-				"Sub-part (a) Diagnosis (2 Marks):\n"
-				"When an array is already sorted and QuickSort selects the first or last element as the pivot, every partition is maximally unbalanced (size 0 and size n-1). This requires n recursive stack frames instead of log n. On large datasets (e.g. 100,000 items), this exceeds default call stack limits, triggering a stack overflow crash.\n\n"
-				"Sub-part (b) Remedy (2 Marks):\n"
-				"1. Randomized Pivot: Swap a randomly chosen index with the first element before partitioning, ensuring expected O(n log n) time on sorted data.\n"
-				"2. Median-of-Three: Sample the first, middle, and last elements, selecting their median as the pivot.\n"
-				"3. Introsort: Monitor recursion depth. If depth exceeds 2*floor(log2(n)), switch immediately to HeapSort, guaranteeing O(n log n) worst-case without stack exhaustion."
-			),
+			"solution": "Replace coarse-grained mutex locking with a pre-allocated lock-free ring buffer utilizing atomic memory operations, eliminating thread sleep and context switching.",
 			"internal_choice_question": {
-				"question": "OR: Case Scenario: A database engine sorting millions of fixed-width customer records encounters severe CPU cache misses, spending over 85% of execution time waiting for memory transfers during sorting passes. Formulate an optimization strategy analyzing spatial locality, cache line utilization (64 bytes), and cache-conscious sorting algorithms.",
+				"question": "OR: Case Scenario: An analytical database query engine must sort in-memory datasets consisting of 100 million records. Compare QuickSort, MergeSort, and RadixSort for this workload, considering CPU cache locality, memory overhead, and parallel scalability.",
 				"marks": 4,
-				"difficulty": "Hard",
-				"source": source_tag,
-				"correct_answer": "Analysis of spatial locality and pointer-chasing cache misses, with remedy reorganizing memory layouts (Structure of Arrays) and using Blocked/Radix sorting.",
+				"correct_answer": "Comparative evaluation of O(n log n) comparison sorts vs O(k*n) non-comparison RadixSort with SIMD vectorization.",
 				"answer_key_detail": (
-					"Marking Scheme (4 Marks Total):\n"
-					"• Sub-part (a) Hardware Diagnosis [2 Marks]: Explains that random memory access and large record structures cause cache lines (64 bytes) to be underutilized, inducing frequent L1/L2/L3 cache misses.\n"
-					"• Sub-part (b) Architectural Remedy [2 Marks]: Recommends Key-Index sorting (sorting an array of keys and pointers), or cache-blocked sorting algorithms fitted to L2 cache sizes."
+					"• Sub-part (a) Algorithmic Analysis [2 Marks]: Comparison of cache locality, branch predictability, and auxiliary memory footprints.\n"
+					"• Sub-part (b) Parallel Architecture [2 Marks]: Selection of parallel RadixSort or multi-threaded sample sort for memory bandwidth saturation."
 				),
-				"solution": (
-					"Sub-part (a) Diagnosis (2 Marks):\n"
-					"CPUs load memory in 64-byte cache lines. If records are large (e.g. 512 bytes) and elements are swapped by pointer dereference, each comparison triggers a cache miss, stalling the CPU for ~200 clock cycles.\n\n"
-					"Sub-part (b) Remedy (2 Marks):\n"
-					"1. Key-Index Separation: Extract keys and 4-byte index pointers into a compact contiguous array. Sorting this array achieves dense spatial locality (16 keys per cache line).\n"
-					"2. Cache-conscious Blocking: Divide datasets into chunks that fit entirely within L2/L3 cache (e.g. 256 KB blocks), sort locally in-cache, and perform a streaming multi-way merge."
+				"solution": "For integer keys, RadixSort achieves linear O(n) runtime without branch mispredictions. Parallel MergeSort guarantees stability with predictable O(n) auxiliary memory.",
+			},
+		},
+	]
+
+
+# =====================================================================
+# C PROGRAMMING QUESTION POOL
+# =====================================================================
+
+def _get_c_mcq_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Who created the C programming language at Bell Labs in 1972?",
+			"options": ["(A) Dennis Ritchie", "(B) Ken Thompson", "(C) Brian Kernighan", "(D) Bjarne Stroustrup"],
+			"correct_answer": "(A) Dennis Ritchie",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (A) Dennis Ritchie. Evaluation Criterion: Full 1 mark awarded for identifying Dennis Ritchie.",
+			"solution": "Dennis Ritchie created C at Bell Labs in 1972 to implement the UNIX operating system.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which operator is used in C to extract the memory address of a variable?",
+			"options": ["(A) Asterisk (*)", "(B) Ampersand (&)", "(C) Arrow (->)", "(D) Percent (%)"],
+			"correct_answer": "(B) Ampersand (&)",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) Ampersand (&). Evaluation Criterion: Full 1 mark awarded for identifying the address-of operator.",
+			"solution": "The ampersand `&` yields the memory address of an lvalue. The asterisk `*` dereferences a pointer.",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_c_vsa_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Differentiate between `malloc()` and `calloc()` in C dynamic memory allocation.",
+			"correct_answer": "`malloc()` allocates uninitialized raw bytes; `calloc()` allocates memory and zeroes out all allocated bytes.",
+			"marks": 2,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Parameter difference (`malloc(size)` vs `calloc(num, size)`).\n"
+				"• Point 2 [1 Mark]: Memory initialization (calloc zeroes memory; malloc leaves garbage values)."
+			),
+			"solution": "`malloc` allocates uninitialized memory. `calloc` initializes all allocated bytes to zero.",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_c_short_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Explain the four primary stages of the C compilation pipeline: Preprocessing, Compiling, Assembling, and Linking.",
+			"correct_answer": "Preprocessor expands macros/includes -> Compiler generates assembly -> Assembler generates machine code object files -> Linker binds objects and libraries into executable.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Preprocessing (`#include`, `#define`) and Compilation (C source to assembly).\n"
+				"• Point 2 [1 Mark]: Assembly (assembly instructions to `.o` object files).\n"
+				"• Point 3 [1 Mark]: Linking (resolving external references and library symbols into final binary)."
+			),
+			"solution": "The C compilation pipeline transforms human-readable source code into machine code through four sequential stages.",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_c_long_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Provide an in-depth architectural analysis of Pointers and Dynamic Memory Management in C. Explain pointer arithmetic, memory allocation on the heap (`malloc`, `realloc`, `free`), dangling pointers, memory leaks, and buffer overflows with code examples.",
+			"correct_answer": "Complete examination of C pointer mechanics, heap lifecycle, dangling pointer prevention, and boundary safety.",
+			"marks": 5,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Pointer Arithmetic & Indirection [1 Mark]: Scaling arithmetic by `sizeof(T)` and dereferencing.\n"
+				"• Heap Management Lifecycle [1 Mark]: Correct usage of `malloc`, `realloc`, and `free`.\n"
+				"• Dangling Pointers & Double Free [1 Mark]: Hazards of referencing deallocated memory and mitigation by setting pointers to `NULL`.\n"
+				"• Buffer Overflows & Security [1 Mark]: Exploitation of unbounded string functions (`strcpy`) vs safe alternatives (`strncpy`).\n"
+				"• Code Demonstration [1 Mark]: Syntactically valid C program demonstrating safe allocation, validation, and deallocation."
+			),
+			"solution": "Direct pointer manipulation gives C high efficiency, but manual memory management requires strict discipline to prevent leaks and buffer overflows.",
+			"internal_choice_question": {
+				"question": "OR: Analyze Structs and Data Alignment in C. Explain structure padding, memory alignment rules based on data types, bit-fields, and the `#pragma pack` directive.",
+				"marks": 5,
+				"correct_answer": "Structure layout, compiler alignment padding, hardware word boundary constraints, and packing directives.",
+				"answer_key_detail": (
+					"• Hardware Alignment Constraints [1 Mark]: Why CPUs access memory faster on aligned word boundaries.\n"
+					"• Structure Padding Mechanics [1 Mark]: How compilers insert unused bytes between struct members.\n"
+					"• Reordering Optimization [1 Mark]: Arranging struct members by decreasing size to minimize memory footprints.\n"
+					"• Bit-Fields & Packing [1 Mark]: Defining bit-level flags and utilizing `#pragma pack(1)` for embedded protocols.\n"
+					"• Architectural Trade-offs [1 Mark]: Compact memory footprints vs CPU access latency penalties."
 				),
+				"solution": "Compilers add padding between struct fields to ensure alignment on CPU word boundaries. Reordering fields minimizes waste.",
+			},
+		},
+	]
+
+
+def _get_c_application_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Case Scenario: A C embedded firmware application crashes intermittently with segmentation faults (`SIGSEGV`). Investigation reveals that worker routines access pointers after calling `free()`. Formulate a memory management strategy to eliminate use-after-free defects.",
+			"correct_answer": "Set pointers to NULL immediately after freeing, implement custom wrapper allocation macros, and utilize static analysis tools (Valgrind / AddressSanitizer).",
+			"marks": 4,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Sub-part (a) Defect Diagnosis [2 Marks]: Explains use-after-free and dangling pointer risks under dynamic heap re-allocation.\n"
+				"• Sub-part (b) Remediation Strategy [2 Marks]: Safe free macro (`#define SAFE_FREE(p) do { free(p); p = NULL; } while(0)`) and sanitizer integration."
+			),
+			"solution": "Always set pointers to NULL upon freeing to turn undefined behavior into predictable null pointer exceptions. Run AddressSanitizer during CI builds.",
+			"internal_choice_question": {
+				"question": "OR: Case Scenario: Design an efficient, thread-safe dynamic string buffer in C capable of automatic resizing without memory leaks.",
+				"marks": 4,
+				"correct_answer": "Dynamic string struct holding data pointer, length, and capacity, using geometric growth with `realloc()`.",
+				"answer_key_detail": (
+					"• Sub-part (a) Struct Design [2 Marks]: Specification of struct with `char *buffer`, `size_t length`, and `size_t capacity`.\n"
+					"• Sub-part (b) Resizing & Error Safety [2 Marks]: Geometric doubling with `realloc()` temporary pointer to prevent memory leaks on failure."
+				),
+				"solution": "Store capacity and length alongside buffer pointer. Double capacity upon overflow using `temp = realloc(buf, new_cap)` to prevent losing original memory if allocation fails.",
+			},
+		},
+	]
+
+
+# =====================================================================
+# FRAPPE FRAMEWORK QUESTION POOL
+# =====================================================================
+
+def _get_frappe_mcq_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "In the Frappe Framework, what is the core metadata model defining database schema, controllers, and UI views?",
+			"options": ["(A) ModelView", "(B) DocType", "(C) MigrationSchema", "(D) EntityMap"],
+			"correct_answer": "(B) DocType",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) DocType. Evaluation Criterion: Full 1 mark awarded for identifying DocType.",
+			"solution": "In Frappe, DocType is the foundational building block describing fields, database tables, validations, and permissions.",
+			"internal_choice_question": None,
+		},
+		{
+			"question": "Which Python controller method is invoked immediately before saving a Frappe document to the database?",
+			"options": ["(A) before_insert()", "(B) validate()", "(C) on_update()", "(D) on_submit()"],
+			"correct_answer": "(B) validate()",
+			"marks": 1,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": "[1 Mark] Correct Option: (B) validate(). Evaluation Criterion: Full 1 mark awarded for identifying validate().",
+			"solution": "The `validate()` hook runs on every save prior to database persistence, allowing custom business logic and constraint checks.",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_frappe_vsa_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Differentiate between a Single DocType and a standard DocType in Frappe.",
+			"correct_answer": "A standard DocType creates a dedicated MariaDB table for multiple records; a Single DocType stores key-value settings in the `tabSingles` table.",
+			"marks": 2,
+			"difficulty": "Easy",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Standard DocType creates a distinct MariaDB table (`tabDocTypeName`).\n"
+				"• Point 2 [1 Mark]: Single DocType stores singleton configuration values in `tabSingles` without creating a new table."
+			),
+			"solution": "Standard DocTypes hold multiple records (like Customer, Item). Single DocTypes store application-wide settings (like LMS Settings).",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_frappe_short_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Explain the role and syntax of Client Scripts vs Server Scripts in extending Frappe applications.",
+			"correct_answer": "Client Scripts execute in the browser using JavaScript for UI interactivity; Server Scripts execute on the backend using Python for data validation and API endpoints.",
+			"marks": 3,
+			"difficulty": "Medium",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Point 1 [1 Mark]: Client Script triggers (`refresh`, `validate`, field changes) in browser runtime.\n"
+				"• Point 2 [1 Mark]: Server Script hooks (DocType Events, API endpoints, Permission queries) in Python.\n"
+				"• Point 3 [1 Mark]: Security separation between client-side validation and enforced server-side constraints."
+			),
+			"solution": "Client scripts handle dynamic form behavior in the browser. Server scripts enforce server-side business rules and expose whitelisted API methods.",
+			"internal_choice_question": None,
+		},
+	]
+
+
+def _get_frappe_long_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Provide a comprehensive architectural analysis of the Frappe ORM and Document Lifecycle. Detail the sequence of controller hooks from `before_insert` to `on_submit`, explain Child Tables and database representation, and demonstrate ORM query APIs (`get_doc`, `get_all`, `db.set_value`).",
+			"correct_answer": "Detailed examination of Frappe Document lifecycle hooks, child table architecture, and ORM database interaction methods.",
+			"marks": 5,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Document Lifecycle Sequence [1 Mark]: Execution order: `before_insert` -> `validate` -> `before_save` -> `on_update` -> `on_submit`.\n"
+				"• Submittable DocTypes & Workflow [1 Mark]: Docstatus values: 0 (Draft), 1 (Submitted), 2 (Cancelled) and immutability constraints.\n"
+				"• Child Tables Architecture [1 Mark]: Parent-child foreign key linkage (`parent`, `parenttype`, `parentfield`, `idx`).\n"
+				"• ORM API Demonstration [1 Mark]: Proper usage of `frappe.get_doc()`, `frappe.db.get_value()`, and `frappe.get_all()` with filters.\n"
+				"• Transaction Boundaries & Performance [1 Mark]: Managing `frappe.db.commit()`, rollback triggers, and avoiding N+1 queries."
+			),
+			"solution": "Frappe wraps MariaDB/PostgreSQL with an active-record ORM. Controller hooks ensure validations and business rules execute reliably during document saves and submissions.",
+			"internal_choice_question": {
+				"question": "OR: Analyze Frappe's Role-Based Access Control (RBAC) and Permission System. Detail Role Permissions Manager, User Permissions, Document Level Permissions, and Permission Query Conditions.",
+				"marks": 5,
+				"correct_answer": "RBAC architecture, Role Permissions Manager, User Permission filtering, and Permission Query Conditions.",
+				"answer_key_detail": (
+					"• Role Permissions Manager [1 Mark]: Mapping roles to CRUD operations on DocTypes at specific permission levels (0-9).\n"
+					"• Permission Levels [1 Mark]: Restricting sensitive fields to privileged roles using field-level permlevels.\n"
+					"• User Permissions [1 Mark]: Enforcing row-level security restricting users to specific documents (e.g. Branch, Company).\n"
+					"• Permission Query Hooks [1 Mark]: Using `permission_query_conditions` hook to dynamically append SQL WHERE clauses.\n"
+					"• Controller Security Enforcement [1 Mark]: Proper usage of `has_permission()` and avoiding unrestricted `ignore_permissions=True`."
+				),
+				"solution": "Frappe combines role-based CRUD matrices with row-level User Permissions and dynamic SQL permission queries for comprehensive data isolation.",
+			},
+		},
+	]
+
+
+def _get_frappe_application_pool(source_tag: str) -> List[Dict[str, Any]]:
+	return [
+		{
+			"question": "Case Scenario: An educational institution using Frappe LMS experiences slow loading times on assessment list views during final examinations. The database server reports heavy CPU load caused by repeated queries fetching related child table records. Formulate a database indexing and caching optimization plan.",
+			"correct_answer": "Index child table foreign keys, utilize `frappe.get_all()` with selective field projection, and cache static syllabus data in Redis.",
+			"marks": 4,
+			"difficulty": "Hard",
+			"source": source_tag,
+			"answer_key_detail": (
+				"• Sub-part (a) Bottleneck Diagnosis [2 Marks]: Identifies unindexed child table parent queries and excessive `frappe.get_doc()` loop calls.\n"
+				"• Sub-part (b) Technical Remediation [2 Marks]: Concrete optimization using `frappe.get_all()` with explicit fields, indexing `parent` columns, and utilizing `frappe.cache().get_value()`."
+			),
+			"solution": "Avoid calling `get_doc` in list loops. Use `frappe.get_all` to project only necessary fields, ensure index on `parent`, and cache configuration in Redis.",
+			"internal_choice_question": {
+				"question": "OR: Case Scenario: An automated assessment grading background job times out when processing 1,000 student submissions simultaneously. Design a distributed background job queue architecture using Frappe's background enqueue framework.",
+				"marks": 4,
+				"correct_answer": "Batch processing using `frappe.enqueue()` across default, short, and long Redis worker queues.",
+				"answer_key_detail": (
+					"• Sub-part (a) Architecture Breakdown [2 Marks]: Chunking student submissions into sub-batches and enqueuing via `frappe.enqueue()`.\n"
+					"• Sub-part (b) Monitoring & Fault Tolerance [2 Marks]: Implementing job progress logging, retry backoff, and state persistence upon completion."
+				),
+				"solution": "Partition submissions into batches of 50. Enqueue each chunk using `frappe.enqueue('module.process_batch', queue='long', timeout=1800)` to execute concurrently across Redis workers.",
 			},
 		},
 	]

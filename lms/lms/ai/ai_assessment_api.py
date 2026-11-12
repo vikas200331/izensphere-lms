@@ -166,6 +166,15 @@ def api_get_batch_details(batch: str):
 			course_title = frappe.db.get_value("LMS Course", c.course, "title") or c.title or c.course
 			courses.append({"course": c.course, "title": course_title})
 
+	if not courses:
+		if frappe.db.exists("LMS Course", batch):
+			c_title = frappe.db.get_value("LMS Course", batch, "title") or batch
+			courses.append({"course": batch, "title": c_title})
+		elif frappe.db.exists("LMS Course", batch.strip().lower()):
+			match_slug = batch.strip().lower()
+			c_title = frappe.db.get_value("LMS Course", match_slug, "title") or match_slug
+			courses.append({"course": match_slug, "title": c_title})
+
 	return {
 		"name": doc.name,
 		"title": doc.title,
