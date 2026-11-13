@@ -3341,6 +3341,7 @@ def submit_content_item(doctype: str, name: str):
 			frappe.throw(_("Lesson title cannot be empty."))
 		doc.release_status = "Pending Principal Approval"
 		doc.rejection_reason = None
+		doc.flags.direct_publish = True
 		doc.save(ignore_permissions=True)
 		_notify_principals_for_approval("Course Lesson", name, doc.title, container_title)
 		return {"status": "success", "message": _("Lesson submitted for Principal approval.")}
@@ -3350,6 +3351,7 @@ def submit_content_item(doctype: str, name: str):
 			frappe.throw(_("Chapter title cannot be empty."))
 		doc.release_status = "Pending Principal Approval"
 		doc.rejection_reason = None
+		doc.flags.direct_publish = True
 		doc.save(ignore_permissions=True)
 
 		# Also mark child draft lessons as Pending Principal Approval
@@ -3695,13 +3697,12 @@ def _publish_lesson_record(lesson_doc, publisher: str):
 		"title", "content", "body", "youtube", "quiz_id",
 		"question", "file_type", "instructor_notes", "instructor_content"
 	]
-	if lesson_doc.has_unreleased_edits:
-		for f in content_fields:
-			draft_val = lesson_doc.get(f"draft_{f}")
-			if draft_val is not None:
-				lesson_doc.set(f, draft_val)
-				lesson_doc.set(f"draft_{f}", None)
-		lesson_doc.has_unreleased_edits = 0
+	for f in content_fields:
+		draft_val = lesson_doc.get(f"draft_{f}")
+		if draft_val is not None:
+			lesson_doc.set(f, draft_val)
+			lesson_doc.set(f"draft_{f}", None)
+	lesson_doc.has_unreleased_edits = 0
 
 	lesson_doc.release_status = "Released"
 	lesson_doc.released_by = publisher

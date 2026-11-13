@@ -32,6 +32,29 @@ from lms.lms.utils import (
 from ...md import find_macros
 
 
+def are_lesson_field_values_equal(field: str, val1, val2) -> bool:
+	"""Check if two values for a lesson content field are semantically equal."""
+	if field in ("content", "instructor_content"):
+		b1 = get_editorjs_blocks(val1)
+		b2 = get_editorjs_blocks(val2)
+		if not b1 and not b2:
+			return True
+		if len(b1) != len(b2):
+			return False
+		for block1, block2 in zip(b1, b2):
+			if block1.get("type") != block2.get("type"):
+				return False
+			if block1.get("data") != block2.get("data"):
+				return False
+		return True
+
+	if val1 is None and val2 is None:
+		return True
+	s1 = str(val1).strip() if val1 is not None else ""
+	s2 = str(val2).strip() if val2 is not None else ""
+	return s1 == s2
+
+
 class CourseLesson(Document):
 	def before_insert(self):
 		self.set_initial_release_status()
@@ -86,7 +109,7 @@ class CourseLesson(Document):
 		if not doc_before_save:
 			return
 
-		if doc_before_save.release_status != "Released":
+		if doc_before_save.release_status != "Released" or self.release_status != "Released":
 			return
 
 		course = self.course or frappe.db.get_value("Course Chapter", self.chapter, "course")
@@ -111,7 +134,7 @@ class CourseLesson(Document):
 		]
 
 		has_changes = any(
-			self.get(f) != doc_before_save.get(f)
+			not are_lesson_field_values_equal(f, self.get(f), doc_before_save.get(f))
 			for f in content_fields
 		)
 
@@ -123,6 +146,10 @@ class CourseLesson(Document):
 				self.set(f, doc_before_save.get(f))
 
 			self.has_unreleased_edits = 1
+		else:
+			for f in content_fields:
+				self.set(f"draft_{f}", None)
+			self.has_unreleased_edits = 0
 
 	def on_update(self):
 		self.validate_quiz_id()

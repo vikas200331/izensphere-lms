@@ -815,6 +815,60 @@ class TestContentRelease(unittest.TestCase):
 		frappe.set_user("Administrator")
 		frappe.delete_doc("Course Lesson", l_info.name, force=True)
 
+	def test_21_editorjs_timestamp_does_not_trigger_unreleased_edits_and_post_approval_state(self):
+		"""21. Re-saving with new EditorJS timestamp does not mark unreleased edits; post-approval stays clean."""
+		frappe.set_user(self.teacher)
+
+		# Create a new lesson in teacher choice course
+		course_doc = frappe.get_doc("LMS Course", self.course)
+		course_doc.content_release_mode = "Teacher Choice"
+		course_doc.save(ignore_permissions=True)
+
+		lesson = frappe.new_doc("Course Lesson")
+		lesson.title = "Lesson EditorJS Test"
+		lesson.course = self.course
+		lesson.chapter = self.ch1_name
+		lesson.content = '{"time": 1000000, "blocks": [{"id": "abc1", "type": "paragraph", "data": {"text": "Hello world"}}], "version": "2.29.0"}'
+		lesson.insert(ignore_permissions=True)
+
+		self.assertEqual(lesson.release_status, "Draft")
+		self.assertFalse(lesson.has_unreleased_edits)
+
+		# Submit for approval
+		submit_content_item("Course Lesson", lesson.name)
+		lesson.reload()
+		self.assertEqual(lesson.release_status, "Pending Principal Approval")
+		self.assertFalse(lesson.has_unreleased_edits)
+
+		# Principal approves
+		frappe.set_user(self.principal)
+		approve_content_item("Course Lesson", lesson.name)
+		lesson.reload()
+		self.assertEqual(lesson.release_status, "Released")
+		self.assertFalse(lesson.has_unreleased_edits)
+
+		# Autosave / Re-save by editor with a different EditorJS timestamp (blocks identical)
+		frappe.set_user(self.teacher)
+		lesson.content = '{"time": 9999999, "blocks": [{"id": "abc1", "type": "paragraph", "data": {"text": "Hello world"}}], "version": "2.29.0"}'
+		lesson.save(ignore_permissions=True)
+		lesson.reload()
+
+		# Must NOT become unreleased edits!
+		self.assertEqual(lesson.release_status, "Released")
+		self.assertFalse(lesson.has_unreleased_edits)
+
+		# Summary must show 0 unreleased for this lesson
+		summary = get_unreleased_content_summary(course=self.course)
+		lesson_items = [it for it in summary["items"] if it["name"] == lesson.name]
+		self.assertEqual(len(lesson_items), 0)
+
+		# Clean up
+		frappe.set_user("Administrator")
+		frappe.delete_doc("Course Lesson", lesson.name, force=True)
+		course_doc = frappe.get_doc("LMS Course", self.course)
+		course_doc.content_release_mode = "Principal Approval Required"
+		course_doc.save(ignore_permissions=True)
+
 	@classmethod
 	def tearDownClass(cls):
 		frappe.set_user("Administrator")

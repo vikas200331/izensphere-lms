@@ -652,29 +652,42 @@ function executeContentAction(action, reason) {
 
 	call(endpoint, params)
 		.then(() => {
+			isDirty.value = false
+			initialLoadComplete = false
+			let nextStatus = currentReleaseStatus.value
+			let nextEdits = 0
+
 			if (action === 'publish' || action === 'approve') {
 				toast.success(__('Content published to students successfully'))
-				if (lessonDetails.data?.lesson) {
-					lessonDetails.data.lesson.release_status = 'Released'
-					lessonDetails.data.lesson.has_unreleased_edits = 0
-				}
+				nextStatus = 'Released'
+				nextEdits = 0
 			} else if (action === 'submit') {
 				toast.success(__('Content submitted for Principal approval'))
-				if (lessonDetails.data?.lesson) {
-					lessonDetails.data.lesson.release_status = 'Pending Principal Approval'
-				}
+				nextStatus = 'Pending Principal Approval'
+				nextEdits = 0
 			} else if (action === 'reject') {
 				toast.success(__('Content rejected and sent back to author'))
-				if (lessonDetails.data?.lesson) {
-					lessonDetails.data.lesson.release_status = 'Rejected'
+				nextStatus = 'Rejected'
+				nextEdits = 0
+			}
+
+			if (lessonDetails.data?.lesson) {
+				lessonDetails.data.lesson.release_status = nextStatus
+				lessonDetails.data.lesson.has_unreleased_edits = nextEdits
+				if (action === 'reject') {
 					lessonDetails.data.lesson.rejection_reason = reason || ''
+				} else {
+					lessonDetails.data.lesson.rejection_reason = null
 				}
 			}
+
 			lessonDetails.reload()
 			emit('saved', {
 				name: lessonDetails.data.lesson.name,
 				title: lesson.title,
 				include_in_preview: lesson.include_in_preview,
+				release_status: nextStatus,
+				has_unreleased_edits: nextEdits,
 				isNew: false,
 			})
 		})
@@ -817,15 +830,34 @@ onBeforeUnmount(() => {
 	if (isDirty.value && lessonDetails.data?.lesson) saveLesson({ flush: true })
 })
 
+const EDITABLE_LESSON_FIELDS = [
+	'title',
+	'include_in_preview',
+	'body',
+	'content',
+	'instructor_notes',
+	'instructor_content',
+	'youtube',
+	'quiz_id',
+	'question',
+	'file_type',
+]
+
 const newLessonResource = createResource({
 	url: 'frappe.client.insert',
 	makeParams(values) {
+		const payload = {}
+		for (const key of EDITABLE_LESSON_FIELDS) {
+			if (lesson[key] !== undefined) {
+				payload[key] = lesson[key]
+			}
+		}
 		return {
 			doc: {
 				doctype: 'Course Lesson',
 				course: props.courseName,
 				chapter: lessonDetails.data?.chapter.name,
-				...lesson,
+				...payload,
 			},
 		}
 	},
@@ -834,10 +866,16 @@ const newLessonResource = createResource({
 const editLesson = createResource({
 	url: 'frappe.client.set_value',
 	makeParams(values) {
+		const payload = {}
+		for (const key of EDITABLE_LESSON_FIELDS) {
+			if (lesson[key] !== undefined) {
+				payload[key] = lesson[key]
+			}
+		}
 		return {
 			doctype: 'Course Lesson',
 			name: values.lesson,
-			fieldname: lesson,
+			fieldname: payload,
 		}
 	},
 })

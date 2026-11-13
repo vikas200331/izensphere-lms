@@ -174,8 +174,8 @@ function setSelectedFromNumber(number) {
 // resource. `outline` here is the same cached instance CourseOutline renders,
 // so mutating it in place updates the sidebar with no extra request. A brand
 // new lesson needs a reload to pull in its outline row.
-function onLessonSaved({ name, title, include_in_preview, isNew }) {
-	if (isNew) {
+function onLessonSaved({ name, title, include_in_preview, release_status, has_unreleased_edits, isNew }) {
+	if (isNew || release_status !== undefined) {
 		outline.reload()
 		return
 	}
@@ -184,6 +184,8 @@ function onLessonSaved({ name, title, include_in_preview, isNew }) {
 		if (lesson) {
 			lesson.title = title
 			lesson.include_in_preview = include_in_preview ? 1 : 0
+			if (release_status !== undefined) lesson.release_status = release_status
+			if (has_unreleased_edits !== undefined) lesson.has_unreleased_edits = has_unreleased_edits
 			break
 		}
 	}
