@@ -12,6 +12,16 @@ def _manifest():
 
 
 class TestPWAManifest(BaseTestUtils):
+	def setUp(self):
+		super().setUp()
+		self._orig_app_name = frappe.db.get_single_value("Website Settings", "app_name")
+		self._orig_banner_image = frappe.db.get_single_value("Website Settings", "banner_image")
+
+	def tearDown(self):
+		frappe.db.set_single_value("Website Settings", "app_name", self._orig_app_name)
+		frappe.db.set_single_value("Website Settings", "banner_image", self._orig_banner_image)
+		super().tearDown()
+
 	def test_served_as_a_manifest(self):
 		response = get_pwa_manifest()
 
