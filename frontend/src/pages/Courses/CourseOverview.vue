@@ -154,6 +154,7 @@
 					:courseName="course.data.name"
 					:avg_rating="course.data.rating"
 					:membership="course.data.membership || null"
+					@review-submitted="course.reload"
 				/>
 			</div>
 

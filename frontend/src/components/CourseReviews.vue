@@ -103,6 +103,7 @@
 		v-model:reloadReviews="reviews"
 		v-model:hasReviewed="hasReviewed"
 		:courseName="courseName"
+		@review-submitted="emit('review-submitted')"
 	/>
 </template>
 
@@ -130,6 +131,10 @@ const props = defineProps<{
 	courseName: string
 	avg_rating?: string
 	membership?: Membership | null
+}>()
+
+const emit = defineEmits<{
+	(e: 'review-submitted'): void
 }>()
 
 const hasReviewed = createResource({

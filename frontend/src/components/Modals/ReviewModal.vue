@@ -33,6 +33,10 @@ const show = defineModel<boolean>()
 const reviews = defineModel<Resource<unknown> | undefined>('reloadReviews')
 const hasReviewed = defineModel<Resource<unknown> | undefined>('hasReviewed')
 
+const emit = defineEmits<{
+	(e: 'review-submitted'): void
+}>()
+
 const review = reactive<{ review: string; rating: number }>({
 	review: '',
 	rating: 0,
@@ -67,6 +71,7 @@ function submitReview(close: () => void) {
 		onSuccess() {
 			reviews.value?.reload()
 			hasReviewed.value?.reload()
+			emit('review-submitted')
 			close()
 		},
 		onError(err: { messages?: string[] } | string) {

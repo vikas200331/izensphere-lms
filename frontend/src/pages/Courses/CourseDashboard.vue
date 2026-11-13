@@ -13,13 +13,18 @@
 			/>
 			<NumberChartGraph
 				:title="__('Average Rating')"
-				:value="course.data?.rating || 0"
+				:value="course.data?.rating ? formatRating(course.data.rating) : '0'"
 			>
 				<template #prefix>
 					<LucideStar class="size-5 text-transparent fill-amber-500" />
 				</template>
+				<template v-if="course.data?.rating_count" #suffix>
+					<span class="text-p-base text-ink-gray-5 self-end mb-1">
+						({{ formatAmount(course.data.rating_count) }})
+					</span>
+				</template>
 			</NumberChartGraph>
-			<NumberChartGraph :title="__('Lessons')" :value="course.data?.lessons" />
+			<NumberChartGraph :title="__('Lessons')" :value="course.data?.lessons || 0" />
 		</div>
 		<div
 			v-if="showStudentsEmptyState"
@@ -267,7 +272,7 @@ import {
 import Select from '@/components/Controls/Select.vue'
 import { computed, inject, ref, watch } from 'vue'
 import type dayjsType from 'dayjs'
-import { formatAmount } from '@/utils'
+import { formatAmount, formatRating } from '@/utils'
 import EmptyStateLayout from '@/components/Layouts/EmptyStateLayout.vue'
 import NumberChartGraph from '@/components/NumberChartGraph.vue'
 import ProgressBar from '@/components/ProgressBar.vue'

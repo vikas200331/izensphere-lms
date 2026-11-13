@@ -120,6 +120,7 @@ describe('ReviewModal submit', () => {
 
 		expect(reloadReviews).toHaveBeenCalled()
 		expect(reloadHasReviewed).toHaveBeenCalled()
+		expect(wrapper.emitted('review-submitted')).toHaveLength(1)
 		expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false])
 	})
 })

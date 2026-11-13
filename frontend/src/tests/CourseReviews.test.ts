@@ -79,7 +79,11 @@ vi.mock('@/components/UserAvatar.vue', () => ({
 	default: { template: '<div />' },
 }))
 vi.mock('@/components/Modals/ReviewModal.vue', () => ({
-	default: { template: '<div />' },
+	default: {
+		name: 'ReviewModal',
+		emits: ['review-submitted'],
+		template: '<div data-testid="review-modal" />',
+	},
 }))
 vi.mock('@/utils', () => ({ formatRating: (r: string) => String(r) }))
 
@@ -180,5 +184,13 @@ describe('CourseReviews list rendering', () => {
 
 		await wrapper.get('article button').trigger('click')
 		expect(wrapper.get('article p').classes()).not.toContain('line-clamp-5')
+	})
+
+	it('bubbles the review-submitted event when a review is submitted', async () => {
+		const wrapper = mountReviews()
+		await flushPromises()
+		const modal = wrapper.findComponent({ name: 'ReviewModal' })
+		modal.vm.$emit('review-submitted')
+		expect(wrapper.emitted('review-submitted')).toHaveLength(1)
 	})
 })

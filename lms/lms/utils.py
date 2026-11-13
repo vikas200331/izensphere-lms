@@ -297,8 +297,11 @@ def get_instructors(doctype: str, docname: str):
 	return instructor_details
 
 
-def get_average_rating(course: str):
-	ratings = [review.rating for review in get_reviews(course)]
+def get_average_rating(course: str, exclude_review: str | None = None):
+	reviews = get_reviews(course)
+	if exclude_review:
+		reviews = [r for r in reviews if getattr(r, "name", None) != exclude_review]
+	ratings = [review.rating for review in reviews]
 	if not len(ratings):
 		return None
 	return sum(ratings) / len(ratings)
@@ -310,14 +313,14 @@ def get_reviews(course: str):
 	reviews = frappe.get_all(
 		"LMS Course Review",
 		{"course": course},
-		["review", "rating", "owner", "creation"],
+		["name", "review", "rating", "owner", "creation"],
 		order_by="creation desc",
 	)
 
 	out_of_ratings = frappe.db.get_all(
 		"DocField", {"parent": "LMS Course Review", "fieldtype": "Rating"}, ["options"]
 	)
-	out_of_ratings = (len(out_of_ratings) and out_of_ratings[0].options) or 5
+	out_of_ratings = cint(out_of_ratings[0].options) if out_of_ratings and out_of_ratings[0].options else 5
 	for review in reviews:
 		review.rating = review.rating * out_of_ratings
 		review.owner_details = frappe.db.get_value(
@@ -1180,6 +1183,11 @@ def get_course_details(course: str):
 	course_details.instructors = get_instructors("LMS Course", course_details.name)
 	course_details.membership = membership
 	course_details.rating_count = frappe.db.count("LMS Course Review", {"course": course})
+	avg_rating = get_average_rating(course)
+	live_rating = flt(avg_rating, frappe.get_system_settings("float_precision") or 3) if avg_rating is not None else 0
+	course_details.rating = live_rating
+	if flt(frappe.db.get_value("LMS Course", course, "rating") or 0) != live_rating:
+		frappe.db.set_value("LMS Course", course, "rating", live_rating)
 	course_details.update(get_course_content_stats(course))
 	course_details.transitions = get_workflow_transitions(course_details.name, "LMS Course")
 	# course_details.is_instructor = is_instructor(course_details.name)
