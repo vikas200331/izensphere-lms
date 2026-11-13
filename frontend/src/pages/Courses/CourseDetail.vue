@@ -313,6 +313,7 @@
 	<AIQuizModal
 		v-model="showAIQuizModal"
 		:initial-course="props.courseName"
+		@quiz-saved="onAIQuizSaved"
 	/>
 
 	<Dialog
@@ -414,6 +415,15 @@ interface EditorSelection {
 const editorSelected = ref<EditorSelection | null>(null)
 const showLessonHelp = ref(false)
 const showAIQuizModal = ref(false)
+
+function onAIQuizSaved(savedQuiz: { quiz_name?: string }) {
+	if (savedQuiz?.quiz_name) {
+		router.push({
+			name: 'QuizForm',
+			params: { quizID: savedQuiz.quiz_name },
+		})
+	}
+}
 
 function goToModelPaperGenerator() {
 	router.push({

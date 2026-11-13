@@ -586,6 +586,14 @@ def save_ai_quiz_to_database(
 
 	quiz.total_marks = sum(item["marks"] for item in saved_question_links)
 	quiz.save(ignore_permissions=True)
+
+	# Automatically link to Course Lesson if lesson was provided and not yet linked
+	if lesson and frappe.db.exists("Course Lesson", lesson):
+		lesson_doc = frappe.get_doc("Course Lesson", lesson)
+		if not lesson_doc.quiz_id:
+			lesson_doc.quiz_id = quiz.name
+			lesson_doc.save(ignore_permissions=True)
+
 	frappe.db.commit()
 
 	return {
