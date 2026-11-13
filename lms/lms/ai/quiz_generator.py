@@ -12,6 +12,7 @@ from lms.lms.ai.content_extractor import (
 	extract_lesson_content,
 	get_content_stats,
 )
+from lms.lms.utils import get_editorjs_blocks
 from lms.lms.ai.ai_service import call_ai_service as call_openai_json
 
 
@@ -590,9 +591,24 @@ def save_ai_quiz_to_database(
 	# Automatically link to Course Lesson if lesson was provided and not yet linked
 	if lesson and frappe.db.exists("Course Lesson", lesson):
 		lesson_doc = frappe.get_doc("Course Lesson", lesson)
-		if not lesson_doc.quiz_id:
-			lesson_doc.quiz_id = quiz.name
-			lesson_doc.save(ignore_permissions=True)
+		lesson_doc.quiz_id = quiz.name
+
+		# Embed quiz block into content if not already present
+		blocks = get_editorjs_blocks(lesson_doc.content)
+		has_quiz_block = any(b.get("type") == "quiz" for b in blocks)
+		if not has_quiz_block:
+			blocks.append({
+				"id": f"quiz_{int(frappe.utils.now_datetime().timestamp())}",
+				"type": "quiz",
+				"data": {"quiz": quiz.name},
+			})
+			lesson_doc.content = json.dumps({
+				"time": int(frappe.utils.now_datetime().timestamp() * 1000),
+				"blocks": blocks,
+				"version": "2.29.0",
+			})
+		lesson_doc.flags.direct_publish = True
+		lesson_doc.save(ignore_permissions=True)
 
 	frappe.db.commit()
 
