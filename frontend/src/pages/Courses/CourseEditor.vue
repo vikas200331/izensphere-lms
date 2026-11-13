@@ -27,7 +27,7 @@
 			</div>
 		</div>
 
-		<aside v-if="!isMobile" class="border-s overflow-y-auto">
+		<aside v-if="!isMobile" class="border-s overflow-y-auto pt-12">
 			<SkeletonLoader
 				v-if="outline.loading && !outline.data"
 				variant="editor-sidebar"

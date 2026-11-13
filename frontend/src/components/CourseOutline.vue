@@ -92,7 +92,7 @@
 
 					<!-- Principal Action: Preview Content -->
 					<Button
-						v-if="isPrincipal && course.data?.name"
+						v-if="isPrincipal && props.courseName"
 						variant="outline"
 						size="sm"
 						@click="previewCourse"
@@ -370,7 +370,7 @@ const batchActions = computed(() => {
 		rejectedCount: unreleasedSummary.data?.rejected_count ?? 0,
 		isApprover: isPrincipal.value,
 		canManage: Boolean(props.allowEdit),
-		hasContainer: Boolean(course.data?.name),
+		hasContainer: Boolean(props.courseName),
 	})
 })
 
