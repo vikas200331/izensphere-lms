@@ -185,6 +185,8 @@ def cleanup_lesson_backreferences(lesson: str):
 	frappe.db.set_value("LMS Quiz", {"lesson": lesson}, "lesson", None)
 	frappe.db.set_value("LMS Enrollment", {"current_lesson": lesson}, "current_lesson", None)
 	frappe.db.set_value("LMS Assignment Submission", {"lesson": lesson}, "lesson", None)
+	frappe.db.set_value("LMS Question", {"lesson": lesson}, "lesson", None)
+	frappe.db.set_value("AI Generation Log", {"lesson": lesson}, "lesson", None)
 
 
 def has_permission(doc, ptype="read", user=None):
