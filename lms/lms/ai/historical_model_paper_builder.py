@@ -6,7 +6,11 @@ import uuid
 import frappe
 from frappe import _
 from frappe.utils import cint, now_datetime
-from lms.lms.ai.historical_question_generator import generate_historical_ai_questions, get_latest_analysis_data
+from lms.lms.ai.historical_question_generator import (
+	build_comprehensive_answer_and_rubric,
+	generate_historical_ai_questions,
+	get_latest_analysis_data,
+)
 
 
 SECTION_TYPE_MAP = {
@@ -179,9 +183,11 @@ def generate_historical_model_paper(
 	paper_doc.selected_chapters = chapter_str
 	paper_doc.created_by_teacher = frappe.session.user
 	paper_doc.instructions = (
-		"1. Answer all questions according to specific section instructions.\n"
-		"2. Figures to the right indicate full marks.\n"
-		"3. Write legibly and illustrate your answers with suitable diagrams wherever necessary."
+		"1. Please verify that this question paper contains all printed pages and designated sections.\n"
+		"2. Write your Candidate Roll Number and Name in the designated boxes on the paper/booklet.\n"
+		"3. All sections are compulsory. Internal choice questions ('OR') are provided in higher-mark sections.\n"
+		"4. Figures to the right indicate full marks assigned to each question.\n"
+		"5. Illustrate your answers with clear diagrams, algorithms, and syntactically verified code snippets where applicable."
 	)
 
 	built_sections = []
@@ -190,7 +196,7 @@ def generate_historical_model_paper(
 	for s_idx, sec in enumerate(sections, 1):
 		s_name = sec.get("section_name", f"Section {chr(64 + s_idx)}")
 		s_title = sec.get("title", f"Section {chr(64 + s_idx)}")
-		s_instr = sec.get("instructions", "Answer all questions.")
+		s_instr = sec.get("instructions", "Answer all questions according to instructions.")
 		s_type = sec.get("question_type", "Choices")
 		s_num = cint(sec.get("num_questions", 1))
 		s_marks_each = cint(sec.get("marks_per_question", 1))
@@ -211,9 +217,32 @@ def generate_historical_model_paper(
 
 		section_questions = gen_res.get("questions", [])
 
-		# Format section questions
+		# Format section questions with exhaustive marks-proportional answers and rubrics
 		formatted_qs = []
 		for q_idx, q in enumerate(section_questions, 1):
+			# For questions carrying 5+ marks, provide an authentic internal choice question ("OR")
+			internal_choice = None
+			if s_marks_each >= 5:
+				alt_topic = f"{q.get('topic', 'Core Concept')} Alternative Architecture"
+				alt_pack = build_comprehensive_answer_and_rubric(
+					topic=alt_topic,
+					q_text=f"Explain the design, internal execution, and implementation of {alt_topic}.",
+					q_type=q.get("type", s_type),
+					marks=s_marks_each,
+					subject=subject,
+					course=course,
+				)
+				internal_choice = {
+					"question": f"Explain the architectural design, execution flow, and practical implementation of {alt_topic} with appropriate error handling and complexity analysis.",
+					"type": q.get("type", s_type),
+					"options": [],
+					"marks": s_marks_each,
+					"correct_answer": alt_pack["correct_answer"],
+					"answer_key_detail": alt_pack["answer_key_detail"],
+					"solution": alt_pack["solution"],
+					"explanation": alt_pack["explanation"],
+				}
+
 			formatted_qs.append({
 				"id": q.get("id", f"Q-{s_idx}-{q_idx}"),
 				"question_number": f"{s_idx}.{q_idx}",
@@ -223,18 +252,24 @@ def generate_historical_model_paper(
 				"marks": s_marks_each,
 				"difficulty": q.get("difficulty", "Medium"),
 				"topic": q.get("topic", "General"),
-				"explanation": q.get("explanation", ""),
 				"correct_answer": q.get("correct_answer", ""),
+				"answer_key_detail": q.get("answer_key_detail", ""),
+				"solution": q.get("solution", ""),
+				"explanation": q.get("explanation", ""),
+				"internal_choice_question": internal_choice,
 				"historical_reference": q.get("historical_reference", ""),
 			})
 
 			all_answer_keys.append({
 				"section": s_name,
 				"question_number": f"{s_idx}.{q_idx}",
-				"question_snippet": q.get("question", "")[:60] + "...",
+				"question_snippet": (q.get("question") or "")[:80] + "...",
 				"correct_answer": q.get("correct_answer", "See solution"),
+				"answer_key_detail": q.get("answer_key_detail", ""),
+				"solution": q.get("solution", ""),
 				"explanation": q.get("explanation", ""),
 				"marks": s_marks_each,
+				"internal_choice_question": internal_choice,
 			})
 
 		s_type_validated = SECTION_TYPE_MAP.get(s_type, "Mixed")

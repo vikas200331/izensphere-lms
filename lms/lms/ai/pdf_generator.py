@@ -2,10 +2,40 @@
 # For license information, please see license.txt
 
 import json
+import re
 import frappe
 from frappe import _
 from frappe.utils import cint, escape_html, get_url
 from frappe.utils.pdf import get_pdf
+
+
+def format_solution_markdown_html(text: str) -> str:
+	"""Formats textbook model solutions with headings, code snippets, and structured paragraphs."""
+	if not text:
+		return ""
+	escaped = escape_html(text)
+
+	# Format code blocks ```python ... ```
+	def code_repl(m):
+		code_content = m.group(1).strip()
+		return f'<div class="code-container"><pre class="code-block"><code>{code_content}</code></pre></div>'
+
+	escaped = re.sub(r'```(?:python|java|sql|javascript|bash|c|cpp)?\s*\n?(.*?)\n?```', code_repl, escaped, flags=re.DOTALL)
+
+	# Format headings
+	escaped = re.sub(r'###\s+([^\n<]+)', r'<div class="sol-heading">\1</div>', escaped)
+	escaped = re.sub(r'##\s+([^\n<]+)', r'<div class="sol-heading-large">\1</div>', escaped)
+
+	# Convert newlines to <br> outside code blocks
+	parts = escaped.split('<div class="code-container">')
+	result = [parts[0].replace('\n', '<br>')]
+	for p in parts[1:]:
+		subparts = p.split('</div>', 1)
+		if len(subparts) == 2:
+			result.append('<div class="code-container">' + subparts[0] + '</div>' + subparts[1].replace('\n', '<br>'))
+		else:
+			result.append(p)
+	return "".join(result)
 
 
 def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str:
@@ -121,11 +151,11 @@ def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str
 					or_ans = or_q.get("correct_answer") or "See Marking Scheme"
 					or_detail = or_q.get("answer_key_detail") or or_q.get("solution") or ""
 					or_ans_snippet = f"""
-					<div class="or-answer-box" style="margin-top: 6px; padding-top: 6px; border-top: 1px dashed #86efac;">
-						<div style="font-weight: bold; color: #166534; font-size: 8pt; text-transform: uppercase;">OR Alternative Answer Key & Marking Scheme:</div>
-						<div style="margin: 2px 0;"><strong>Correct Answer:</strong> {escape_html(str(or_ans))}</div>
-						<div style="margin-top: 3px; font-size: 8pt; color: #14532d; line-height: 1.35;">
-							<strong>Evaluation Rubric ({q_marks} Mark{'s' if q_marks > 1 else ''}):</strong><br>
+					<div class="or-answer-box">
+						<div class="or-badge">OR Alternative Answer Key & Marking Scheme:</div>
+						<div style="margin: 2px 0;"><strong>Correct Answer:</strong> <span style="font-weight: 600; color: #052e16;">{escape_html(str(or_ans))}</span></div>
+						<div class="rubric-box">
+							<strong style="color: #166534; text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.5px;">Marking Scheme & Evaluation Rubric ({q_marks} Mark{'s' if q_marks > 1 else ''}):</strong><br>
 							{escape_html(str(or_detail)).replace(chr(10), '<br>')}
 						</div>
 					</div>
@@ -133,12 +163,12 @@ def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str
 
 				answer_snippet = f"""
 				<div class="answer-box">
-					<div style="margin-bottom: 3px;">
-						<span style="background: #16a34a; color: #ffffff; padding: 1px 5px; border-radius: 3px; font-weight: bold; font-size: 7.5pt; text-transform: uppercase;">Answer Key</span>
-						<strong style="margin-left: 4px; color: #166534;">Correct Answer:</strong> <span style="font-weight: 600; color: #052e16;">{escape_html(str(ans))}</span>
+					<div style="margin-bottom: 4px;">
+						<span class="badge-answer-key">Official Answer Key</span>
+						<strong style="margin-left: 6px; color: #166534;">Correct Answer:</strong> <span style="font-weight: 600; color: #052e16;">{escape_html(str(ans))}</span>
 					</div>
-					<div style="margin-top: 4px; font-size: 8pt; color: #14532d; line-height: 1.35;">
-						<strong>Marking Scheme & Evaluation Rubric ({q_marks} Mark{'s' if q_marks > 1 else ''}):</strong><br>
+					<div class="rubric-box">
+						<strong style="color: #166534; text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.5px;">Point-by-Point Marking Rubric ({q_marks} Mark{'s' if q_marks > 1 else ''}):</strong><br>
 						{escape_html(str(detail)).replace(chr(10), '<br>')}
 					</div>
 					{or_ans_snippet}
@@ -147,33 +177,47 @@ def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str
 			elif doc_type == "detailed_solutions":
 				ans = q.get("correct_answer") or ""
 				sol = q.get("solution") or q.get("explanation") or "Step-by-step solution not provided."
+				rubric = q.get("answer_key_detail") or ""
 
 				or_sol_snippet = ""
 				if q.get("internal_choice_question"):
 					or_q = q["internal_choice_question"]
 					or_ans = or_q.get("correct_answer") or ""
 					or_sol = or_q.get("solution") or or_q.get("explanation") or ""
+					or_rubric = or_q.get("answer_key_detail") or ""
 					or_sol_snippet = f"""
-					<div class="or-solution-box" style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #7dd3fc;">
-						<div style="font-weight: bold; color: #0369a1; font-size: 8pt; text-transform: uppercase;">OR Alternative Step-by-Step Solution:</div>
-						{f'<div style="margin: 2px 0;"><strong>OR Answer:</strong> {escape_html(str(or_ans))}</div>' if or_ans else ''}
-						<div style="margin-top: 3px; font-size: 8pt; color: #0c4a6e; line-height: 1.35;">
-							<strong>Marking Solution & Explanation:</strong><br>
-							{escape_html(str(or_sol)).replace(chr(10), '<br>')}
+					<div class="or-solution-box">
+						<div class="or-sol-badge">OR Alternative Step-by-Step Model Solution:</div>
+						{f'<div style="margin: 2px 0;"><strong>OR Answer:</strong> <span style="font-weight: 600; color: #0369a1;">{escape_html(str(or_ans))}</span></div>' if or_ans else ''}
+						<div class="sol-steps" style="margin-top: 4px; font-size: 8.5pt; color: #0f172a; line-height: 1.45; background: #ffffff; padding: 8px 12px; border-radius: 4px; border: 1px solid #bae6fd;">
+							<div style="color: #0369a1; font-weight: bold; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.5px; margin-bottom: 4px; border-bottom: 1px solid #e0f2fe; padding-bottom: 2px;">
+								Step-by-Step Model Answer ({q_marks} Mark{'s' if q_marks > 1 else ''}):
+							</div>
+							{format_solution_markdown_html(str(or_sol))}
 						</div>
+						{f'''<div class="rubric-box" style="margin-top: 5px;">
+							<strong style="color: #166534; text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.5px;">Examiner's Step-Wise Marking Rubric:</strong><br>
+							{escape_html(str(or_rubric)).replace(chr(10), '<br>')}
+						</div>''' if or_rubric else ''}
 					</div>
 					"""
 
 				answer_snippet = f"""
 				<div class="solution-box">
-					<div style="margin-bottom: 3px;">
-						<span style="background: #0284c7; color: #ffffff; padding: 1px 5px; border-radius: 3px; font-weight: bold; font-size: 7.5pt; text-transform: uppercase;">Solution</span>
-						{f'<strong style="margin-left: 4px; color: #0369a1;">Correct Answer:</strong> <span style="font-weight: 600;">{escape_html(str(ans))}</span>' if ans else ''}
+					<div style="margin-bottom: 4px;">
+						<span class="badge-solution">Comprehensive Model Solution</span>
+						{f'<strong style="margin-left: 6px; color: #0369a1;">Definitive Answer:</strong> <span style="font-weight: 600; color: #0c4a6e;">{escape_html(str(ans))}</span>' if ans else ''}
 					</div>
-					<div class="sol-steps" style="margin-top: 4px; font-size: 8pt; color: #0f172a; line-height: 1.35;">
-						<strong style="color: #0369a1;">Marking Scheme & Pedagogical Solution:</strong><br>
-						{escape_html(str(sol)).replace(chr(10), '<br>')}
+					<div class="sol-steps" style="margin-top: 5px; font-size: 8.5pt; color: #0f172a; line-height: 1.45; background: #ffffff; padding: 8px 12px; border-radius: 4px; border: 1px solid #bae6fd;">
+						<div style="color: #0369a1; font-weight: bold; text-transform: uppercase; font-size: 8pt; letter-spacing: 0.5px; margin-bottom: 4px; border-bottom: 1px solid #e0f2fe; padding-bottom: 2px;">
+							Step-by-Step Model Answer ({q_marks} Mark{'s' if q_marks > 1 else ''}):
+						</div>
+						{format_solution_markdown_html(str(sol))}
 					</div>
+					{f'''<div class="rubric-box" style="margin-top: 5px;">
+						<strong style="color: #166534; text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.5px;">Examiner's Step-Wise Marking Rubric:</strong><br>
+						{escape_html(str(rubric)).replace(chr(10), '<br>')}
+					</div>''' if rubric else ''}
 					{or_sol_snippet}
 				</div>
 				"""
@@ -359,19 +403,147 @@ def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str
 		margin-left: 32px;
 	}}
 	.answer-box {{
-		margin: 4px 0 4px 32px;
-		background: #eef7ee;
-		border-left: 3px solid #2e7d32;
-		padding: 4px 8px;
+		margin: 6px 0 6px 32px;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		border-left: 4px solid #16a34a;
+		border-radius: 4px;
+		padding: 6px 10px;
 		font-size: 9pt;
 	}}
 	.solution-box {{
-		margin: 6px 0 6px 32px;
-		background: #f7f9fc;
-		border: 1px solid #d0dbe5;
-		border-left: 3px solid #0288d1;
+		margin: 8px 0 8px 32px;
+		background: #f8fafc;
+		border: 1px solid #bae6fd;
+		border-left: 4px solid #0284c7;
+		border-radius: 4px;
+		padding: 8px 12px;
+		font-size: 9pt;
+	}}
+	.badge-answer-key {{
+		background: #16a34a;
+		color: #ffffff;
+		padding: 2px 6px;
+		border-radius: 3px;
+		font-weight: bold;
+		font-size: 7.5pt;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}}
+	.badge-solution {{
+		background: #0284c7;
+		color: #ffffff;
+		padding: 2px 6px;
+		border-radius: 3px;
+		font-weight: bold;
+		font-size: 7.5pt;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}}
+	.rubric-box {{
+		margin-top: 5px;
+		font-size: 8pt;
+		color: #14532d;
+		line-height: 1.4;
+		background: #ffffff;
 		padding: 6px 10px;
+		border-radius: 4px;
+		border: 1px solid #bbf7d0;
+	}}
+	.or-badge {{
+		font-weight: bold;
+		color: #166534;
+		font-size: 8pt;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		margin-bottom: 3px;
+	}}
+	.or-sol-badge {{
+		font-weight: bold;
+		color: #0369a1;
+		font-size: 8pt;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+		margin-bottom: 3px;
+	}}
+	.or-answer-box {{
+		margin-top: 8px;
+		padding-top: 6px;
+		border-top: 1px dashed #86efac;
+	}}
+	.or-solution-box {{
+		margin-top: 10px;
+		padding-top: 8px;
+		border-top: 1px dashed #7dd3fc;
+	}}
+	.code-container {{
+		margin: 6px 0;
+	}}
+	.code-block {{
+		background: #0f172a;
+		color: #f8fafc;
+		padding: 8px 12px;
+		border-radius: 4px;
+		font-family: 'Courier New', Courier, monospace;
+		font-size: 8pt;
+		line-height: 1.35;
+		white-space: pre-wrap;
+		word-break: break-all;
+		margin: 0;
+	}}
+	.sol-heading {{
+		font-weight: bold;
+		color: #0369a1;
 		font-size: 8.5pt;
+		margin: 6px 0 2px 0;
+		text-transform: uppercase;
+		border-bottom: 1px solid #e0f2fe;
+		padding-bottom: 2px;
+	}}
+	.sol-heading-large {{
+		font-weight: bold;
+		color: #0c4a6e;
+		font-size: 9pt;
+		margin: 8px 0 3px 0;
+		text-transform: uppercase;
+	}}
+	.candidate-box-table {{
+		width: 100%;
+		border: 1.5px solid #222;
+		border-collapse: collapse;
+		margin-bottom: 12px;
+		font-size: 8.5pt;
+	}}
+	.candidate-box-table td {{
+		padding: 5px 8px;
+		border: 1px solid #bbb;
+		vertical-align: middle;
+	}}
+	.confidential-banner {{
+		background: #fee2e2;
+		color: #991b1b;
+		border: 1px solid #f87171;
+		padding: 6px 10px;
+		text-align: center;
+		font-size: 8.5pt;
+		font-weight: bold;
+		letter-spacing: 0.8px;
+		border-radius: 4px;
+		margin-bottom: 12px;
+		text-transform: uppercase;
+	}}
+	.solutions-banner {{
+		background: #e0f2fe;
+		color: #0369a1;
+		border: 1px solid #38bdf8;
+		padding: 6px 10px;
+		text-align: center;
+		font-size: 8.5pt;
+		font-weight: bold;
+		letter-spacing: 0.8px;
+		border-radius: 4px;
+		margin-bottom: 12px;
+		text-transform: uppercase;
 	}}
 	.sol-ans {{
 		color: #0288d1;
@@ -410,6 +582,18 @@ def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str
 	</tr>
 </table>
 
+{'''
+<div class="confidential-banner">
+	CONFIDENTIAL — OFFICIAL EVALUATION SCHEME & ANSWER KEY FOR EXAMINERS ONLY
+</div>
+''' if doc_type == "answer_key" else ""}
+
+{'''
+<div class="solutions-banner">
+	COMPREHENSIVE PEDAGOGICAL MODEL SOLUTIONS & STEP-WISE MARKING RUBRICS
+</div>
+''' if doc_type == "detailed_solutions" else ""}
+
 <table class="meta-table">
 	<tr>
 		<td><strong>Class / Batch:</strong> {escape_html(paper.class_level or '')}{f" (Batch: {escape_html(paper.batch)})" if getattr(paper, 'batch', None) and paper.batch != paper.class_level else ""}</td>
@@ -422,6 +606,19 @@ def get_paper_html(paper_doc_name: str, doc_type: str = "question_paper") -> str
 		<td style="text-align: right;"><strong>Maximum Marks:</strong> {paper.total_marks}</td>
 	</tr>
 </table>
+
+{'''
+<table class="candidate-box-table">
+	<tr>
+		<td style="width: 50%;"><strong>Candidate Roll No:</strong> ________________________</td>
+		<td style="width: 50%;"><strong>Candidate Name:</strong> ________________________</td>
+	</tr>
+	<tr>
+		<td><strong>Examination Center:</strong> ____________________</td>
+		<td><strong>Invigilator Signature:</strong> ________________</td>
+	</tr>
+</table>
+''' if doc_type == "question_paper" else ""}
 
 {f'''
 <div class="instructions-box">

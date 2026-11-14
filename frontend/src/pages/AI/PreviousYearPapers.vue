@@ -467,15 +467,31 @@
 							</div>
 						</div>
 
-						<!-- Answer & Explanation -->
-						<div class="text-xs bg-gray-50 p-3 rounded-lg space-y-1">
-							<div class="text-emerald-800 font-semibold">
-								Correct Answer: <span class="font-normal">{{ q.correct_answer }}</span>
+						<!-- Answer & Explanation & Detailed Model Solution -->
+						<div class="text-xs bg-gray-50 p-3.5 rounded-lg space-y-2 border border-gray-100">
+							<div class="text-emerald-800 font-semibold flex items-start gap-1.5">
+								<span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold uppercase text-[10px]">Answer</span>
+								<span class="font-normal">{{ q.correct_answer }}</span>
 							</div>
-							<div class="text-gray-600">
-								Explanation: <span class="font-normal">{{ q.explanation }}</span>
+
+							<!-- Marking Rubric -->
+							<div v-if="q.answer_key_detail" class="bg-emerald-50/70 p-2.5 rounded border border-emerald-100 text-[11px] text-emerald-950 font-mono whitespace-pre-wrap leading-relaxed">
+								<span class="font-sans font-bold text-emerald-800 block mb-1 uppercase text-[10px] tracking-wider">Evaluation Rubric ({{ q.marks }} Marks):</span>
+								{{ q.answer_key_detail }}
 							</div>
-							<div class="text-[11px] text-indigo-700 pt-1 font-medium flex items-center gap-1">
+
+							<!-- Detailed Pedagogical Model Solution Toggle -->
+							<details v-if="q.solution" class="group">
+								<summary class="cursor-pointer text-violet-700 font-semibold hover:text-violet-900 list-none flex items-center gap-1.5 py-1">
+									<span class="lucide-chevron-right size-3.5 transition-transform group-open:rotate-90"></span>
+									<span>{{ __('View Detailed Pedagogical Model Solution') }}</span>
+								</summary>
+								<div class="mt-2 bg-slate-900 text-slate-100 p-3 rounded-lg font-mono text-[11px] leading-relaxed whitespace-pre-wrap overflow-x-auto border border-slate-800 shadow-inner">
+									{{ q.solution }}
+								</div>
+							</details>
+
+							<div v-if="q.historical_reference" class="text-[11px] text-indigo-700 pt-1 font-medium flex items-center gap-1">
 								<span class="lucide-history size-3"></span>
 								<span>Historical Reference: {{ q.historical_reference }}</span>
 							</div>
@@ -551,8 +567,8 @@
 							</div>
 						</div>
 
-						<div class="pt-3 border-t flex items-center justify-between gap-2">
-							<div class="flex items-center gap-2">
+						<div class="pt-3 border-t flex items-center justify-between gap-2 flex-wrap">
+							<div class="flex items-center gap-2 flex-wrap">
 								<Button
 									variant="solid"
 									theme="violet"
@@ -571,6 +587,16 @@
 								>
 									<template #prefix><span class="lucide-key size-3.5 text-amber-600"></span></template>
 									{{ __('Answer Key') }}
+								</Button>
+
+								<Button
+									variant="outline"
+									theme="violet"
+									size="sm"
+									@click="downloadPaperPdf(paper.name, 'detailed_solutions')"
+								>
+									<template #prefix><span class="lucide-file-text size-3.5 text-violet-600"></span></template>
+									{{ __('Detailed Solutions PDF') }}
 								</Button>
 							</div>
 
@@ -866,7 +892,7 @@ async function saveApprovedToBank() {
 	}
 }
 
-function downloadPaperPdf(paperName: string, docType: 'question_paper' | 'answer_key') {
+function downloadPaperPdf(paperName: string, docType: 'question_paper' | 'answer_key' | 'detailed_solutions') {
 	window.open(
 		`/api/method/lms.lms.ai.previous_year_api.api_download_model_paper_pdf?paper_name=${encodeURIComponent(
 			paperName

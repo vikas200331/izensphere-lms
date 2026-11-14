@@ -161,6 +161,11 @@ SECTION C
 		for q in gen["questions"]:
 			self.assertTrue(len(q["question"]) > 10)
 			self.assertIn("historical_reference", q)
+			self.assertIn("answer_key_detail", q)
+			self.assertIn("solution", q)
+			# Must have comprehensive non-trivial answers and rubrics based on marks
+			self.assertGreater(len(q["answer_key_detail"]), 30)
+			self.assertGreater(len(q["solution"]), 80)
 
 	def test_05_save_approved_questions_to_question_bank(self):
 		approved_questions = [
@@ -202,3 +207,17 @@ SECTION C
 		self.assertEqual(paper_doc.approval_status, "Draft")
 		self.assertEqual(paper_doc.total_marks, 100)
 		self.assertEqual(len(paper_doc.sections), 4)
+
+		# Verify sections have detailed questions with rubrics and solutions
+		from lms.lms.ai.pdf_generator import get_paper_html
+		qp_html = get_paper_html(paper_doc.name, doc_type="question_paper")
+		self.assertIn("Candidate Roll No", qp_html)
+		self.assertIn("Section A", qp_html)
+
+		ak_html = get_paper_html(paper_doc.name, doc_type="answer_key")
+		self.assertIn("Marking Rubric", ak_html)
+		self.assertIn("CONFIDENTIAL", ak_html)
+
+		sol_html = get_paper_html(paper_doc.name, doc_type="detailed_solutions")
+		self.assertIn("COMPREHENSIVE PEDAGOGICAL MODEL SOLUTIONS", sol_html)
+		self.assertIn("Step-by-Step Model Answer", sol_html)
