@@ -407,21 +407,27 @@ async function submitGeneratePaper() {
 			total_marks: Number(sec.num_questions) * Number(sec.marks_per_question),
 		}))
 
+		const payload: Record<string, any> = {
+			title: form.value.title.trim(),
+			course: props.course,
+			subject: form.value.subject.trim(),
+			total_marks: Number(form.value.total_marks) || 100,
+			duration: form.value.duration || '3 Hours',
+			sections_config: JSON.stringify(payloadSections),
+			difficulty_easy_pct: Number(form.value.difficulty_easy_pct) || 30,
+			difficulty_medium_pct: Number(form.value.difficulty_medium_pct) || 40,
+			difficulty_hard_pct: Number(form.value.difficulty_hard_pct) || 30,
+		}
+		if (form.value.batch && form.value.batch.trim()) {
+			payload.batch = form.value.batch.trim()
+		}
+		if (props.analysisName) {
+			payload.analysis_name = props.analysisName
+		}
+
 		const res = await createResource({
 			url: 'lms.lms.ai.previous_year_api.api_generate_model_paper_from_history',
-			params: {
-				title: form.value.title,
-				course: props.course,
-				subject: form.value.subject,
-				batch: form.value.batch,
-				total_marks: form.value.total_marks,
-				duration: form.value.duration,
-				sections_config: JSON.stringify(payloadSections),
-				difficulty_easy_pct: form.value.difficulty_easy_pct,
-				difficulty_medium_pct: form.value.difficulty_medium_pct,
-				difficulty_hard_pct: form.value.difficulty_hard_pct,
-				analysis_name: props.analysisName,
-			},
+			params: payload,
 		}).fetch()
 
 		if (res && res.status === 'success') {

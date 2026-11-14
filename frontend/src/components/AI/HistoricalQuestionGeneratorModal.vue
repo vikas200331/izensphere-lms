@@ -245,19 +245,34 @@ async function submitGenerate() {
 	errorMessage.value = ''
 
 	try {
+		const payload: Record<string, any> = {
+			course: props.course,
+			subject: form.value.subject.trim(),
+			number_of_questions: Number(form.value.number_of_questions) || 10,
+			question_type: form.value.question_type || 'Mixed',
+			difficulty: form.value.difficulty || 'Mixed',
+		}
+		if (form.value.batch && form.value.batch.trim()) {
+			payload.batch = form.value.batch.trim()
+		}
+		if (form.value.chapter && form.value.chapter.trim()) {
+			payload.chapter = form.value.chapter.trim()
+		}
+		if (
+			form.value.marks_per_question !== null &&
+			form.value.marks_per_question !== undefined &&
+			String(form.value.marks_per_question).trim() !== '' &&
+			!isNaN(Number(form.value.marks_per_question))
+		) {
+			payload.marks_per_question = Number(form.value.marks_per_question)
+		}
+		if (props.analysisName) {
+			payload.analysis_name = props.analysisName
+		}
+
 		const res = await createResource({
 			url: 'lms.lms.ai.previous_year_api.api_generate_questions_from_history',
-			params: {
-				course: props.course,
-				subject: form.value.subject,
-				batch: form.value.batch,
-				chapter: form.value.chapter,
-				number_of_questions: form.value.number_of_questions,
-				question_type: form.value.question_type,
-				difficulty: form.value.difficulty,
-				marks_per_question: form.value.marks_per_question,
-				analysis_name: props.analysisName,
-			},
+			params: payload,
 		}).fetch()
 
 		if (res && res.questions) {

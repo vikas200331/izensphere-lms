@@ -387,21 +387,27 @@ async function submitUpload() {
 			attachmentUrl = await uploadFileToFrappe(selectedFile.value)
 		}
 
+		const payload: Record<string, any> = {
+			course: form.value.course,
+			subject: form.value.subject,
+			title: form.value.title,
+			examination_year: Number(form.value.examination_year) || new Date().getFullYear(),
+			examination_type: form.value.examination_type || 'Annual Examination',
+			max_marks: Number(form.value.max_marks) || 100,
+			duration: form.value.duration || '3 Hours',
+			attachment: attachmentUrl,
+			auto_process: form.value.auto_process ? 1 : 0,
+		}
+		if (form.value.academic_year && form.value.academic_year.trim()) {
+			payload.academic_year = form.value.academic_year.trim()
+		}
+		if (form.value.board_university && form.value.board_university.trim()) {
+			payload.board_university = form.value.board_university.trim()
+		}
+
 		const res = await createResource({
 			url: 'lms.lms.ai.previous_year_api.api_upload_previous_year_paper',
-			params: {
-				course: form.value.course,
-				subject: form.value.subject,
-				title: form.value.title,
-				examination_year: form.value.examination_year,
-				academic_year: form.value.academic_year,
-				examination_type: form.value.examination_type,
-				board_university: form.value.board_university,
-				max_marks: form.value.max_marks,
-				duration: form.value.duration,
-				attachment: attachmentUrl,
-				auto_process: form.value.auto_process ? 1 : 0,
-			},
+			params: payload,
 		}).fetch()
 
 		toast.success(

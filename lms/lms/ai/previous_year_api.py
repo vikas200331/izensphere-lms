@@ -44,31 +44,38 @@ def verify_teacher_or_admin():
 def api_upload_previous_year_paper(
 	course: str,
 	subject: str,
-	title: str,
-	examination_year: int,
-	attachment: str,
+	title: str | None = None,
+	examination_year: int | str = 2024,
+	attachment: str | None = None,
 	batch: str | None = None,
 	academic_year: str | None = None,
 	examination_type: str = "Annual Examination",
 	board_university: str | None = None,
 	chapter: str | None = None,
-	max_marks: int = 100,
+	max_marks: int | str = 100,
 	duration: str = "3 Hours",
-	auto_process: int = 1,
+	auto_process: int | str = 1,
 ) -> dict:
 	"""Uploads and saves a previous year examination question paper record."""
 	verify_teacher_or_admin()
 
+	# Sanitize parameters
+	b_val = batch.strip() if batch and batch.strip() not in ("", "null", "undefined") else None
+	ch_val = chapter.strip() if chapter and chapter.strip() not in ("", "null", "undefined") else None
+	bu_val = board_university.strip() if board_university and board_university.strip() not in ("", "null", "undefined") else None
+	ay_val = academic_year.strip() if academic_year and academic_year.strip() not in ("", "null", "undefined") else None
+	exam_year = cint(examination_year) or now_datetime().year
+
 	doc = frappe.new_doc("Previous Year Question Papers")
-	doc.title = title or f"{subject} ({examination_year})"
+	doc.title = title or f"{subject} ({exam_year})"
 	doc.course = course
-	doc.batch = batch
+	doc.batch = b_val
 	doc.subject = subject
-	doc.academic_year = academic_year or f"{cint(examination_year) - 1}-{examination_year}"
-	doc.examination_year = cint(examination_year)
-	doc.examination_type = examination_type
-	doc.board_university = board_university
-	doc.chapter = chapter
+	doc.academic_year = ay_val or f"{exam_year - 1}-{exam_year}"
+	doc.examination_year = exam_year
+	doc.examination_type = examination_type or "Annual Examination"
+	doc.board_university = bu_val
+	doc.chapter = ch_val
 	doc.max_marks = cint(max_marks) or 100
 	doc.duration = duration or "3 Hours"
 	doc.attachment = attachment
@@ -228,43 +235,51 @@ def api_generate_questions_from_history(
 	subject: str,
 	batch: str | None = None,
 	chapter: str | None = None,
-	number_of_questions: int = 10,
+	number_of_questions: int | str = 10,
 	question_type: str = "Mixed",
 	difficulty: str = "Mixed",
-	marks_per_question: int | None = None,
+	marks_per_question: int | str | None = None,
 	analysis_name: str | None = None,
 ) -> dict:
 	"""Generate novel examination questions using the collective historical patterns."""
 	verify_teacher_or_admin()
+
+	b_val = batch.strip() if batch and batch.strip() not in ("", "null", "undefined") else None
+	ch_val = chapter.strip() if chapter and chapter.strip() not in ("", "null", "undefined") else None
+	an_val = analysis_name.strip() if analysis_name and analysis_name.strip() not in ("", "null", "undefined") else None
+	num_q = cint(number_of_questions) or 10
+	marks_q = cint(marks_per_question) if marks_per_question not in (None, "", "null", "undefined") and cint(marks_per_question) > 0 else None
+
 	return generate_historical_ai_questions(
 		course=course,
 		subject=subject,
-		batch=batch,
-		chapter=chapter,
-		number_of_questions=cint(number_of_questions) or 10,
-		question_type=question_type,
-		difficulty=difficulty,
-		marks_per_question=cint(marks_per_question) if marks_per_question else None,
-		analysis_name=analysis_name,
+		batch=b_val,
+		chapter=ch_val,
+		number_of_questions=num_q,
+		question_type=question_type or "Mixed",
+		difficulty=difficulty or "Mixed",
+		marks_per_question=marks_q,
+		analysis_name=an_val,
 	)
 
 
 @frappe.whitelist()
 def api_regenerate_single_question(
 	question_id: str,
-	analysis_name: str | None,
-	course: str,
-	subject: str,
+	analysis_name: str | None = None,
+	course: str = "",
+	subject: str = "",
 	topic: str = "",
 	question_type: str = "Short Answer",
 	difficulty: str = "Medium",
-	marks: int = 5,
+	marks: int | str = 5,
 ) -> dict:
 	"""Regenerates a single question in the staged review."""
 	verify_teacher_or_admin()
+	an_val = analysis_name.strip() if analysis_name and analysis_name.strip() not in ("", "null", "undefined") else None
 	return regenerate_single_question(
 		question_id=question_id,
-		analysis_name=analysis_name,
+		analysis_name=an_val,
 		course=course,
 		subject=subject,
 		topic=topic,
@@ -334,16 +349,19 @@ def api_generate_model_paper_from_history(
 	subject: str,
 	batch: str | None = None,
 	chapters: str | list | None = None,
-	total_marks: int = 100,
+	total_marks: int | str = 100,
 	duration: str = "3 Hours",
 	sections_config: str | list | None = None,
-	difficulty_easy_pct: int = 30,
-	difficulty_medium_pct: int = 40,
-	difficulty_hard_pct: int = 30,
+	difficulty_easy_pct: int | str = 30,
+	difficulty_medium_pct: int | str = 40,
+	difficulty_hard_pct: int | str = 30,
 	analysis_name: str | None = None,
 ) -> dict:
 	"""Generate a complete model paper based on historical examination analysis."""
 	verify_teacher_or_admin()
+
+	b_val = batch.strip() if batch and batch.strip() not in ("", "null", "undefined") else None
+	an_val = analysis_name.strip() if analysis_name and analysis_name.strip() not in ("", "null", "undefined") else None
 
 	sec_cfg = sections_config
 	if isinstance(sections_config, str):
@@ -363,15 +381,15 @@ def api_generate_model_paper_from_history(
 		title=title,
 		course=course,
 		subject=subject,
-		batch=batch,
+		batch=b_val,
 		chapters=ch_list,
 		total_marks=cint(total_marks) or 100,
 		duration=duration or "3 Hours",
 		sections_config=sec_cfg,
-		difficulty_easy_pct=cint(difficulty_easy_pct),
-		difficulty_medium_pct=cint(difficulty_medium_pct),
-		difficulty_hard_pct=cint(difficulty_hard_pct),
-		analysis_name=analysis_name,
+		difficulty_easy_pct=cint(difficulty_easy_pct) if difficulty_easy_pct not in (None, "") else 30,
+		difficulty_medium_pct=cint(difficulty_medium_pct) if difficulty_medium_pct not in (None, "") else 40,
+		difficulty_hard_pct=cint(difficulty_hard_pct) if difficulty_hard_pct not in (None, "") else 30,
+		analysis_name=an_val,
 	)
 
 
