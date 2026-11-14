@@ -584,6 +584,16 @@ const batchMenu = (tab) => {
 				})
 			},
 		})
+		options.push({
+			label: __('Previous Year Papers & Analysis'),
+			icon: 'lucide-book-open',
+			onClick: () => {
+				router.push({
+					name: 'PreviousYearPapers',
+					query: { batch: props.batchName },
+				})
+			},
+		})
 	}
 	if (tab?.key !== 'settings') return options
 	if (isMobile.value) {

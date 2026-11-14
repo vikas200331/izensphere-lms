@@ -670,6 +670,15 @@ const getSidebarItems = (forMobile = false) => {
 					activeFor: ['AIQuestionPaperGenerator'],
 				},
 				{
+					label: 'Previous Year Papers & AI Analysis',
+					icon: 'BookOpen',
+					to: 'PreviousYearPapers',
+					condition: () => {
+						return !forMobile && isAdmin()
+					},
+					activeFor: ['PreviousYearPapers'],
+				},
+				{
 					label: 'AI Question Bank',
 					icon: 'Database',
 					to: 'AIQuestionBank',

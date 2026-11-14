@@ -113,6 +113,17 @@
 					</template>
 					{{ isMobile ? __('AI Paper') : __('Generate Model Question Paper') }}
 				</Button>
+				<Button
+					v-if="isAdmin"
+					variant="subtle"
+					theme="gray"
+					@click="goToPreviousYearPapers"
+				>
+					<template #prefix>
+						<span class="lucide-book-open size-4" />
+					</template>
+					{{ isMobile ? __('Past Papers') : __('Previous Year Papers & Analysis') }}
+				</Button>
 			</template>
 			<Button
 				v-if="tab?.key === 'dashboard' && course.data && isMobile && !isExpired"
@@ -432,6 +443,13 @@ function goToModelPaperGenerator() {
 	})
 }
 
+function goToPreviousYearPapers() {
+	router.push({
+		name: 'PreviousYearPapers',
+		query: { course: props.courseName },
+	})
+}
+
 type CourseMenuItem = {
 	label: string
 	icon: string
@@ -513,6 +531,13 @@ const courseOptions = computed<CourseMenuItem[]>(() => {
 			icon: 'lucide-file-text',
 			onClick: () => {
 				goToModelPaperGenerator()
+			},
+		})
+		options.push({
+			label: __('Previous Year Papers & Analysis'),
+			icon: 'lucide-book-open',
+			onClick: () => {
+				goToPreviousYearPapers()
 			},
 		})
 	}

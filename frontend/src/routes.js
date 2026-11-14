@@ -298,6 +298,11 @@ export const routes = [
 		component: () => import('@/pages/AI/AIProviderSettings.vue'),
 	},
 	{
+		path: '/ai-assessment/previous-year-papers',
+		name: 'PreviousYearPapers',
+		component: () => import('@/pages/AI/PreviousYearPapers.vue'),
+	},
+	{
 		path: '/programs',
 		name: 'Programs',
 		component: () => import('@/pages/Programs/Programs.vue'),

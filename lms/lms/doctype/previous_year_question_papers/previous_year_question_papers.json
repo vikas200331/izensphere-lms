@@ -1,0 +1,259 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:PYQP-{YYYY}-{#####}",
+ "creation": "2026-11-14 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "course",
+  "batch",
+  "subject",
+  "academic_year",
+  "examination_year",
+  "examination_type",
+  "board_university",
+  "chapter",
+  "column_break_meta",
+  "max_marks",
+  "duration",
+  "attachment",
+  "ai_processing_status",
+  "extracted_questions_count",
+  "file_checksum",
+  "uploaded_by",
+  "upload_date",
+  "section_break_extracted",
+  "error_message",
+  "extracted_text",
+  "extracted_questions_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Question Paper Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "course",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Course",
+   "options": "LMS Course",
+   "reqd": 1
+  },
+  {
+   "fieldname": "batch",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Batch",
+   "options": "LMS Batch"
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Subject",
+   "reqd": 1
+  },
+  {
+   "default": "2024-2025",
+   "fieldname": "academic_year",
+   "fieldtype": "Data",
+   "label": "Academic Year"
+  },
+  {
+   "fieldname": "examination_year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Examination Year",
+   "non_negative": 1,
+   "reqd": 1
+  },
+  {
+   "default": "Annual Examination",
+   "fieldname": "examination_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Examination Type",
+   "options": "Annual Examination\nFinal Examination\nSemester Examination\nMidterm Examination\nUnit Test\nModel Examination\nSupplementary Examination"
+  },
+  {
+   "fieldname": "board_university",
+   "fieldtype": "Data",
+   "label": "Board / University"
+  },
+  {
+   "fieldname": "chapter",
+   "fieldtype": "Data",
+   "label": "Chapter / Unit"
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "100",
+   "fieldname": "max_marks",
+   "fieldtype": "Int",
+   "label": "Maximum Marks",
+   "non_negative": 1
+  },
+  {
+   "default": "3 Hours",
+   "fieldname": "duration",
+   "fieldtype": "Data",
+   "label": "Examination Duration"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Question Paper Attachment",
+   "reqd": 1
+  },
+  {
+   "default": "Pending",
+   "fieldname": "ai_processing_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "AI Processing Status",
+   "options": "Pending\nProcessing\nProcessed\nFailed"
+  },
+  {
+   "default": "0",
+   "fieldname": "extracted_questions_count",
+   "fieldtype": "Int",
+   "label": "Extracted Questions Count",
+   "read_only": 1
+  },
+  {
+   "fieldname": "file_checksum",
+   "fieldtype": "Data",
+   "label": "File Checksum",
+   "read_only": 1
+  },
+  {
+   "fieldname": "uploaded_by",
+   "fieldtype": "Link",
+   "label": "Uploaded By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "upload_date",
+   "fieldtype": "Datetime",
+   "label": "Upload Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_extracted",
+   "fieldtype": "Section Break",
+   "label": "Extracted Data"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message",
+   "read_only": 1
+  },
+  {
+   "fieldname": "extracted_text",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Extracted Raw Text",
+   "read_only": 1
+  },
+  {
+   "fieldname": "extracted_questions_json",
+   "fieldtype": "Long Text",
+   "hidden": 1,
+   "label": "Extracted Questions JSON",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-14 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "LMS",
+ "name": "Previous Year Question Papers",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Course Creator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Instructor",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Moderator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Batch Evaluator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Principal"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "examination_year",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}

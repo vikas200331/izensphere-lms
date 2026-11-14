@@ -1,0 +1,253 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:PYQA-{YYYY}-{#####}",
+ "creation": "2026-11-14 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "course",
+  "batch",
+  "subject",
+  "academic_years_covered",
+  "status",
+  "column_break_meta",
+  "total_papers_analyzed",
+  "total_questions_extracted",
+  "total_repeated_questions",
+  "analyzed_by",
+  "analysis_date",
+  "section_break_metrics",
+  "error_message",
+  "topic_importance_json",
+  "repeated_questions_json",
+  "year_distribution_json",
+  "marks_distribution_json",
+  "difficulty_distribution_json",
+  "chapter_frequency_json",
+  "frequently_asked_topics_json",
+  "section_break_generated",
+  "generated_questions_json",
+  "model_papers_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Analysis Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "course",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Course",
+   "options": "LMS Course",
+   "reqd": 1
+  },
+  {
+   "fieldname": "batch",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Batch",
+   "options": "LMS Batch"
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Subject",
+   "reqd": 1
+  },
+  {
+   "fieldname": "academic_years_covered",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Academic Years Covered"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nIn Progress\nCompleted\nFailed"
+  },
+  {
+   "fieldname": "column_break_meta",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_papers_analyzed",
+   "fieldtype": "Int",
+   "label": "Total Papers Analyzed"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_questions_extracted",
+   "fieldtype": "Int",
+   "label": "Total Questions Extracted"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_repeated_questions",
+   "fieldtype": "Int",
+   "label": "Total Repeated Questions"
+  },
+  {
+   "fieldname": "analyzed_by",
+   "fieldtype": "Link",
+   "label": "Analyzed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "analysis_date",
+   "fieldtype": "Datetime",
+   "label": "Analysis Date"
+  },
+  {
+   "fieldname": "section_break_metrics",
+   "fieldtype": "Section Break",
+   "label": "Historical Analysis Data"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message"
+  },
+  {
+   "fieldname": "topic_importance_json",
+   "fieldtype": "Long Text",
+   "label": "Topic Importance JSON"
+  },
+  {
+   "fieldname": "repeated_questions_json",
+   "fieldtype": "Long Text",
+   "label": "Repeated Questions JSON"
+  },
+  {
+   "fieldname": "year_distribution_json",
+   "fieldtype": "Long Text",
+   "label": "Year Distribution JSON"
+  },
+  {
+   "fieldname": "marks_distribution_json",
+   "fieldtype": "Long Text",
+   "label": "Marks Distribution JSON"
+  },
+  {
+   "fieldname": "difficulty_distribution_json",
+   "fieldtype": "Long Text",
+   "label": "Difficulty Distribution JSON"
+  },
+  {
+   "fieldname": "chapter_frequency_json",
+   "fieldtype": "Long Text",
+   "label": "Chapter Frequency JSON"
+  },
+  {
+   "fieldname": "frequently_asked_topics_json",
+   "fieldtype": "Long Text",
+   "label": "Frequently Asked Topics JSON"
+  },
+  {
+   "fieldname": "section_break_generated",
+   "fieldtype": "Section Break",
+   "label": "AI Generated Questions & Papers"
+  },
+  {
+   "fieldname": "generated_questions_json",
+   "fieldtype": "Long Text",
+   "label": "Generated Questions JSON"
+  },
+  {
+   "fieldname": "model_papers_json",
+   "fieldtype": "Long Text",
+   "label": "Model Papers JSON"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-11-14 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "LMS",
+ "name": "Previous Year Paper Analysis",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Course Creator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Instructor",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Moderator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "role": "Batch Evaluator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Principal"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "title",
+ "track_changes": 1
+}
