@@ -444,6 +444,17 @@
 					</div>
 
 					<div class="flex items-center gap-2 flex-wrap">
+						<!-- Status Indicator Badge -->
+						<Badge
+							v-if="generatedPaper?.approval_status"
+							:theme="generatedPaper.approval_status === 'Published' ? 'green' : (generatedPaper.approval_status === 'Principal Approved' ? 'blue' : (generatedPaper.approval_status === 'Submitted for Approval' ? 'orange' : 'gray'))"
+							variant="subtle"
+							size="md"
+							class="font-semibold"
+						>
+							{{ generatedPaper.approval_status === 'Published' ? '✓ ' + __('Published to Students') : generatedPaper.approval_status }}
+						</Badge>
+
 						<!-- PDF Downloads -->
 						<Button
 							variant="outline"
@@ -455,8 +466,9 @@
 							{{ __('Download PDF') }}
 						</Button>
 
-						<!-- Workflow Actions -->
+						<!-- Save as Draft (Shown when not Published) -->
 						<Button
+							v-if="generatedPaper?.approval_status !== 'Published'"
 							variant="outline"
 							size="sm"
 							:loading="saving"
@@ -465,24 +477,56 @@
 							{{ __('Save as Draft') }}
 						</Button>
 
+						<!-- Submit for Approval (Shown when in Draft; disabled when already Submitted; hidden when Published/Principal Approved) -->
 						<Button
+							v-if="generatedPaper?.approval_status !== 'Published' && generatedPaper?.approval_status !== 'Principal Approved'"
 							variant="subtle"
 							theme="orange"
 							size="sm"
+							:disabled="generatedPaper?.approval_status === 'Submitted for Approval'"
 							:loading="saving"
 							@click="savePaper('Submitted for Approval')"
 						>
-							{{ __('Submit for Approval') }}
+							<template #prefix>
+								<span v-if="generatedPaper?.approval_status === 'Submitted for Approval'" class="lucide-check size-3.5 text-orange-600"></span>
+							</template>
+							{{ generatedPaper?.approval_status === 'Submitted for Approval' ? __('Submitted for Approval') : __('Submit for Approval') }}
+						</Button>
+
+						<!-- Approve & Publish: Disabled when already Published; Active otherwise -->
+						<Button
+							v-if="generatedPaper?.approval_status === 'Published'"
+							variant="solid"
+							theme="green"
+							size="sm"
+							:disabled="true"
+						>
+							<template #prefix><span class="lucide-check-circle size-3.5 text-white"></span></template>
+							{{ __('Published') }}
 						</Button>
 
 						<Button
+							v-else
 							variant="solid"
 							theme="green"
 							size="sm"
 							:loading="saving"
 							@click="savePaper('Published')"
 						>
+							<template #prefix><span class="lucide-send size-3.5"></span></template>
 							{{ __('Approve & Publish') }}
+						</Button>
+
+						<!-- Unpublish to Draft (Available only when paper is Published) -->
+						<Button
+							v-if="generatedPaper?.approval_status === 'Published'"
+							variant="outline"
+							theme="gray"
+							size="sm"
+							:loading="saving"
+							@click="savePaper('Draft')"
+						>
+							{{ __('Unpublish to Draft') }}
 						</Button>
 					</div>
 				</div>
