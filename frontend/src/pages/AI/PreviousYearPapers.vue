@@ -562,7 +562,14 @@
 							</h4>
 
 							<div class="text-xs text-gray-500 flex items-center gap-3">
-								<span>Status: <strong class="text-amber-700">{{ paper.approval_status }}</strong></span>
+								<span>Status: 
+									<span 
+										class="px-2 py-0.5 rounded text-[11px] font-bold"
+										:class="paper.approval_status === 'Published' ? 'bg-emerald-100 text-emerald-800' : (paper.approval_status === 'Principal Approved' ? 'bg-blue-100 text-blue-800' : (paper.approval_status === 'Submitted for Approval' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700'))"
+									>
+										{{ paper.approval_status }}
+									</span>
+								</span>
 								<span>{{ paper.creation ? new Date(paper.creation).toLocaleDateString() : '' }}</span>
 							</div>
 						</div>
@@ -598,10 +605,22 @@
 									<template #prefix><span class="lucide-file-text size-3.5 text-violet-600"></span></template>
 									{{ __('Detailed Solutions PDF') }}
 								</Button>
+
+								<Button
+									v-if="paper.approval_status !== 'Published'"
+									variant="solid"
+									theme="green"
+									size="sm"
+									:loading="publishingPaper === paper.name"
+									@click="publishPaper(paper.name)"
+								>
+									<template #prefix><span class="lucide-check-circle size-3.5"></span></template>
+									{{ __('Publish') }}
+								</Button>
 							</div>
 
 							<router-link
-								:to="{ name: 'AIQuestionPaperGenerator' }"
+								:to="{ name: 'AIQuestionPaperGenerator', query: { paper: paper.name } }"
 								class="text-xs text-violet-600 font-semibold hover:underline"
 							>
 								{{ __('Review & Edit') }} →
@@ -665,6 +684,7 @@ const analysisDashboard = ref<any>({})
 
 const isAnalyzing = ref(false)
 const isSavingToBank = ref(false)
+const publishingPaper = ref<string | null>(null)
 const showUploadModal = ref(false)
 const showQuestionGeneratorModal = ref(false)
 const showModelPaperModal = ref(false)
@@ -899,5 +919,24 @@ function downloadPaperPdf(paperName: string, docType: 'question_paper' | 'answer
 		)}&doc_type=${docType}`,
 		'_blank'
 	)
+}
+
+async function publishPaper(paperName: string) {
+	publishingPaper.value = paperName
+	try {
+		await createResource({
+			url: 'lms.lms.ai.ai_assessment_api.api_publish_assessment',
+			params: {
+				doctype: 'AI Question Paper',
+				name: paperName,
+			},
+		}).fetch()
+		toast.success('Question paper successfully published to students.')
+		await fetchModelPapers()
+	} catch (err: any) {
+		toast.error(err.message || 'Failed to publish question paper.')
+	} finally {
+		publishingPaper.value = null
+	}
 }
 </script>

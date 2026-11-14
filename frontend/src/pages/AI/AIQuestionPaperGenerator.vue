@@ -808,7 +808,9 @@ onMounted(async () => {
 	await loadBatches()
 	await loadCourses()
 	await loadSavedPapers()
-	if (route.query.batch) {
+	if (route.query.paper) {
+		await openSavedPaper(route.query.paper)
+	} else if (route.query.batch) {
 		form.batch = route.query.batch
 		await onBatchSelect()
 	} else if (route.query.course) {
