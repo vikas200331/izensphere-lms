@@ -520,17 +520,18 @@
 		>
 			<template #body-content>
 				<div class="space-y-4 p-2 text-sm">
-					<div class="rounded-xl border border-purple-200 bg-purple-50/80 p-3.5 flex items-center gap-3 text-xs text-purple-900">
-						<span class="lucide-sparkles size-5 text-purple-600 shrink-0"></span>
+					<div class="rounded-xl border border-purple-200 bg-gradient-to-r from-purple-50 to-indigo-50 p-3.5 flex items-start gap-3 text-xs text-purple-900">
+						<span class="lucide-sparkles size-5 text-purple-600 shrink-0 mt-0.5"></span>
 						<div>
-							<span class="font-bold">{{ __('Interactive Conceptual Tutor:') }}</span>
-							{{ __('Personalized pedagogical breakdown to help you master this concept for examinations.') }}
+							<div class="font-bold text-purple-950 text-xs">{{ __('AI Academic Tutor — Detailed Answer Explanation') }}</div>
+							<div class="text-[11px] text-purple-800 mt-0.5">{{ __('Concept breakdown, step-by-step logic, option analysis, and exam strategy.') }}</div>
 						</div>
 					</div>
 
-					<div class="prose prose-sm max-w-none text-gray-800 leading-relaxed whitespace-pre-line bg-white p-4 rounded-xl border border-gray-100 shadow-2xs font-sans text-xs">
-						{{ aiHelpText }}
-					</div>
+					<div
+						class="text-gray-700 leading-relaxed bg-white p-5 rounded-xl border border-gray-200 shadow-2xs font-sans text-xs max-h-[65vh] overflow-y-auto"
+						v-html="formatAiText(aiHelpText)"
+					></div>
 				</div>
 			</template>
 			<template #actions>
@@ -846,6 +847,28 @@ async function askAiTutor() {
 	} finally {
 		loadingAiHelp.value = false
 	}
+}
+
+function formatAiText(text) {
+	if (!text) return ''
+	let escaped = text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+
+	// Format ### Headings
+	escaped = escaped.replace(/### (.*?)(?:\n|$)/g, '<h4 class="text-xs font-bold uppercase tracking-wider text-purple-950 mt-4 mb-2 flex items-center gap-1.5">$1</h4>')
+	// Format #### Headings
+	escaped = escaped.replace(/#### (.*?)(?:\n|$)/g, '<h5 class="text-xs font-bold text-gray-800 mt-3 mb-1">$1</h5>')
+	// Format dividers
+	escaped = escaped.replace(/---/g, '<hr class="my-3 border-gray-100"/>')
+	// Format blockquotes / memory tip
+	escaped = escaped.replace(/^>\s*(.*?)$/gm, '<div class="p-3 rounded-xl bg-purple-50 border-l-4 border-purple-500 text-purple-950 font-medium my-2 text-xs">$1</div>')
+	// Format bold
+	escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong class="text-gray-900 font-bold">$1</strong>')
+	// Convert newlines to breaks
+	escaped = escaped.replace(/\n/g, '<br/>')
+	return escaped
 }
 
 async function generateSimilar() {

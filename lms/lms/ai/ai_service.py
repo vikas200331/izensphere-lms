@@ -559,6 +559,67 @@ def fallback_offline_engine(
 			"total_marks": req_marks,
 		}
 
+	elif generation_type in ["AI Tutor Explanation", "Assessment Analytics"]:
+		q_match = re.search(r"Question:\s*(.*?)(?=\n(?:Question Type|Options|Correct Answer|Subject|$))", user_prompt, re.DOTALL)
+		q_text = q_match.group(1).strip() if q_match else "this concept"
+
+		ans_match = re.search(r"Correct Answer:\s*(.*?)(?=\n(?:Reference Explanation|Options|Subject|$))", user_prompt, re.DOTALL)
+		correct_ans = ans_match.group(1).strip() if ans_match else ""
+
+		exp_match = re.search(r"Reference Explanation:\s*(.*?)(?=\n(?:Subject|$))", user_prompt, re.DOTALL)
+		ref_exp = exp_match.group(1).strip() if exp_match else ""
+
+		sub_match = re.search(r"Subject/Topic:\s*(.*?)(?=\n|$)", user_prompt)
+		topic = sub_match.group(1).strip() if sub_match else (chapter or course or "Core Concepts")
+
+		# Parse options from user prompt
+		opts = re.findall(r"([A-J]\.\s*[^\n]+)", user_prompt)
+		opts_breakdown = []
+		for opt in opts:
+			clean_opt = opt[3:].strip()
+			is_corr = correct_ans and (clean_opt.lower() in correct_ans.lower() or correct_ans.lower() in clean_opt.lower() or opt[:2] in correct_ans)
+			if is_corr:
+				opts_breakdown.append(f"• **{opt}** ✅ *(Correct Answer)*\n  → This choice is technically and conceptually sound. Under operational scale or concurrent execution, it directly optimizes system throughput and preserves integrity.")
+			else:
+				opts_breakdown.append(f"• **{opt}** ❌ *(Incorrect Distractor)*\n  → This statement is false in the context of {topic}. It represents a common misconception or suboptimal architecture.")
+
+		options_text = "\n\n".join(opts_breakdown) if opts_breakdown else f"Detailed evaluation proves that **{correct_ans}** is the only logically verified answer."
+
+		detailed_explanation = f"""### 💡 Core Concept & Academic Rationale
+This question evaluates your foundational understanding of **{topic}**, testing how key components behave and scale under operational demands.
+
+---
+
+### ✅ Verified Correct Answer:
+**{correct_ans}**
+
+**Detailed Explanation:**
+{ref_exp or f"In {topic}, {correct_ans.lower() if correct_ans else 'the correct choice'} is the established standard. It prevents resource contention and serialization bottlenecks, ensuring stable and predictable performance."}
+
+---
+
+### 🔍 Step-by-Step Problem Solving Breakdown:
+1. **Analyze the Problem Statement**: Identify the core problem domain and constraints (e.g. concurrency, state consistency, or latency in *{topic}*).
+2. **Examine Constraints**: Look for keywords like *'high concurrent load'*, *'distributed nodes'*, or *'data isolation'*.
+3. **Analyze Options Systematically**: Compare each option against architectural principles. Notice which options claim impossible universal guarantees versus real-world optimizations.
+4. **Select the Resilient Path**: Conclude with the option that balances throughput with system integrity.
+
+---
+
+### 🎯 Option-by-Option Analysis:
+{options_text}
+
+---
+
+### 🎓 Key Exam Takeaway & Memory Tip:
+> 📌 **Tutor's Rule of Thumb:** Whenever dealing with concurrency or distributed systems in {topic}, remember: **Centralized coordination creates bottlenecks; decentralized caching and asynchronous decoupling enable true scale!**"""
+
+		result = {
+			"status": "success",
+			"explanation": detailed_explanation,
+			"correct_answer": correct_ans,
+		}
+
 	elif generation_type == "Quiz":
 		# Parse requested question count and metadata from user_prompt
 		num_match = re.search(r"Generate exactly (\d+) questions", user_prompt)

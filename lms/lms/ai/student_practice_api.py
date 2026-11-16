@@ -400,37 +400,50 @@ def api_ask_ai_question_help(question_id: str, course: str | None = None) -> dic
 
 	clean_question = frappe.utils.strip_html(q_doc.question or "")
 	options_text = ""
+	correct_str = ""
 	if q_doc.type == "Choices":
 		opts = []
+		correct_opts = []
 		for i in range(1, 11):
 			opt = getattr(q_doc, f"option_{i}")
 			if opt:
-				opts.append(f"{chr(64 + i)}. {opt}")
+				prefix = f"{chr(64 + i)}. "
+				opts.append(f"{prefix}{opt}")
+				if getattr(q_doc, f"is_correct_{i}"):
+					correct_opts.append(opt)
 		options_text = "\n".join(opts)
+		correct_str = ", ".join(correct_opts) if correct_opts else "None"
+	elif q_doc.type == "User Input":
+		possibilities = [getattr(q_doc, f"possibility_{i}") for i in range(1, 11) if getattr(q_doc, f"possibility_{i}")]
+		correct_str = ", ".join(possibilities) if possibilities else "None"
+	else:
+		correct_str = q_doc.explanation or "Subjective answer evaluation based on key criteria."
 
 	system_prompt = (
 		"You are an encouraging, expert AI Academic Tutor for Izensphere School students. "
-		"Explain the concepts clearly, simply, and step-by-step. "
-		"Help the student understand WHY the concept works, break down the logic, "
-		"and provide an intuitive analogy or memory tip. Do not use condescending language."
+		"Explain the concepts clearly, simply, and step-by-step with rich pedagogical depth. "
+		"Help the student understand WHY the verified answer is correct, how the logic works, "
+		"why the other options/distractors are incorrect, and provide a memorable exam tip."
 	)
 
 	user_prompt = f"""Question: {clean_question}
 Question Type: {q_doc.type}
 Options:
 {options_text}
+Correct Answer: {correct_str}
+Reference Explanation: {q_doc.explanation or ''}
 Subject/Topic: {q_doc.subject or q_doc.chapter or target_course}
 
-Please provide:
-1. Core Concept Explanation: What fundamental principle is being tested here?
-2. Step-by-Step Solution Logic: How to approach and solve this question.
-3. Common Pitfalls: Where students usually make mistakes.
-4. Quick Memory Tip / Analogy to remember this concept permanently."""
+As an AI Academic Tutor, provide an in-depth pedagogical breakdown of this question:
+1. Core Concept & Detailed Answer: State the correct answer clearly and explain the deep theoretical and practical principles behind it.
+2. Step-by-Step Problem Solving Logic: Guide the student through the thought process to deduce this answer.
+3. Option-by-Option Breakdown: Explain WHY the correct option is right and WHY each incorrect option is wrong/misleading.
+4. Exam Tips & Memory Aid: Give a practical memory tip or mnemonic to master this concept for upcoming tests."""
 
 	ai_resp = call_ai_service(
 		system_prompt=system_prompt,
 		user_prompt=user_prompt,
-		generation_type="Assessment Analytics",
+		generation_type="AI Tutor Explanation",
 		course=target_course,
 		chapter=q_doc.chapter,
 	)
@@ -454,6 +467,7 @@ Please provide:
 	return {
 		"status": "success",
 		"question_id": question_id,
+		"correct_answer": correct_str,
 		"ai_explanation": explanation_output or "AI tutor analysis complete.",
 	}
 

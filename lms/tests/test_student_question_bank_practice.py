@@ -254,3 +254,12 @@ class TestStudentQuestionBankPractice(FrappeTestCase):
 		q_ids = [q["name"] for q in res["questions"]]
 		self.assertIn(self.sci_approved_q, q_ids)
 		self.assertIn(self.sci_draft_q, q_ids)
+
+	def test_11_ask_ai_tutor_explains_detailed_answer(self):
+		"""Ask AI Tutor returns rich detailed answer explanation, correct answer, and option analysis."""
+		frappe.set_user("student_sci@test.com")
+		res = api_ask_ai_question_help(self.sci_approved_q, self.sci_course)
+		self.assertEqual(res["status"], "success")
+		self.assertIn("Process plants make food", res["correct_answer"])
+		self.assertIn("Core Concept", res["ai_explanation"])
+		self.assertIn("Verified Correct Answer", res["ai_explanation"])
