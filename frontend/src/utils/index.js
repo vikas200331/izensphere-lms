@@ -688,6 +688,16 @@ const getSidebarItems = (forMobile = false) => {
 					activeFor: ['AIQuestionBank'],
 				},
 				{
+					label: 'AI Learning & Practice',
+					icon: 'Brain',
+					to: 'AIStudentPractice',
+					condition: () => {
+						const { userResource } = usersStore()
+						return !forMobile && !!userResource?.data
+					},
+					activeFor: ['AIStudentPractice'],
+				},
+				{
 					label: 'AI Generation History',
 					icon: 'History',
 					to: 'AIGenerationHistory',

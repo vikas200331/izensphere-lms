@@ -282,6 +282,11 @@ export const routes = [
 		component: () => import('@/pages/AI/AIQuestionBank.vue'),
 	},
 	{
+		path: '/ai-learning/practice',
+		name: 'AIStudentPractice',
+		component: () => import('@/pages/AI/AIStudentPractice.vue'),
+	},
+	{
 		path: '/ai-assessment/history',
 		name: 'AIGenerationHistory',
 		component: () => import('@/pages/AI/AIGenerationHistory.vue'),

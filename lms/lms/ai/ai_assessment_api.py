@@ -525,6 +525,7 @@ def api_search_question_bank(
 	question_type: str | None = None,
 	marks: int | None = None,
 	search_query: str | None = None,
+	approval_status: str | None = None,
 	start: int = 0,
 	page_length: int = 20,
 ):
@@ -538,6 +539,7 @@ def api_search_question_bank(
 		question_type=question_type,
 		marks=cint(marks) if marks else None,
 		search_query=search_query,
+		approval_status=approval_status,
 		start=cint(start) or 0,
 		page_length=cint(page_length) or 20,
 	)
@@ -676,4 +678,16 @@ def api_reject_assessment(doctype: str, name: str, reason: str = ""):
 		frappe.db.commit()
 		return {"status": "success", "approval_status": paper.approval_status}
 	frappe.throw(_("Unsupported DocType."))
+
+
+# Student Course-Based Practice APIs
+from lms.lms.ai.student_practice_api import (
+	api_get_student_enrolled_courses,
+	api_get_student_practice_questions,
+	api_submit_student_practice_answer,
+	api_ask_ai_question_help,
+	api_generate_similar_practice_question,
+	api_get_student_practice_history,
+)
+
 

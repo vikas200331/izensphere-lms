@@ -79,6 +79,7 @@
   "marks",
   "source",
   "is_ai_generated",
+  "approval_status",
   "column_break_ai_meta",
   "course",
   "chapter",
@@ -454,6 +455,15 @@
    "fieldname": "is_ai_generated",
    "fieldtype": "Check",
    "label": "Is AI Generated"
+  },
+  {
+   "default": "Approved",
+   "fieldname": "approval_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Approval Status",
+   "options": "Approved\nDraft\nRejected"
   },
   {
    "fieldname": "column_break_ai_meta",

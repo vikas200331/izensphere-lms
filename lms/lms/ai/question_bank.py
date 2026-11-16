@@ -17,6 +17,7 @@ def search_question_bank(
 	question_type: str | None = None,
 	marks: int | None = None,
 	search_query: str | None = None,
+	approval_status: str | None = None,
 	start: int = 0,
 	page_length: int = 20,
 ) -> dict:
@@ -35,6 +36,8 @@ def search_question_bank(
 		filters["type"] = question_type
 	if marks:
 		filters["marks"] = cint(marks)
+	if approval_status and approval_status != "All":
+		filters["approval_status"] = approval_status
 
 	or_filters = []
 	if search_query:
@@ -61,6 +64,7 @@ def search_question_bank(
 			"subject",
 			"explanation",
 			"is_ai_generated",
+			"approval_status",
 			"creation",
 			"modified",
 			"option_1",
@@ -113,6 +117,7 @@ def search_question_bank(
 				"subject": q.subject,
 				"explanation": q.explanation,
 				"is_ai_generated": q.is_ai_generated,
+				"approval_status": getattr(q, "approval_status", "Approved") or "Approved",
 				"options": options,
 				"correct_answer": correct if q.multiple else (correct[0] if correct else ""),
 				"creation": str(q.creation),
@@ -185,6 +190,7 @@ def create_or_update_bank_question(data: dict) -> dict:
 	doc.subject = data.get("subject")
 	doc.source = data.get("source", "Manual")
 	doc.explanation = data.get("explanation", "")
+	doc.approval_status = data.get("approval_status", "Approved")
 
 	# Check for duplicates if creating new
 	if not name:

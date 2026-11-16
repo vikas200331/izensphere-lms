@@ -284,8 +284,13 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import PageHeader from '@/components/Layouts/PageHeader.vue'
 import { Button, Badge, Dialog, toast, call } from 'frappe-ui'
+import { usersStore } from '@/stores/user'
+
+const router = useRouter()
+const { userResource } = usersStore()
 
 const loading = ref(false)
 const modalSaving = ref(false)
@@ -317,6 +322,17 @@ const editForm = reactive({
 })
 
 onMounted(async () => {
+	if (
+		userResource.data &&
+		!userResource.data.is_instructor &&
+		!userResource.data.is_moderator &&
+		!userResource.data.is_evaluator &&
+		!userResource.data.is_principal &&
+		!userResource.data.is_admin
+	) {
+		router.replace({ name: 'AIStudentPractice' })
+		return
+	}
 	await loadCourses()
 	await searchQuestions()
 })
