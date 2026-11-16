@@ -552,9 +552,18 @@
 								<span class="text-xs font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded">
 									{{ paper.subject || selectedSubject || 'All' }}
 								</span>
-								<span class="text-xs font-bold text-gray-700 font-mono">
-									{{ paper.total_marks }} Marks • {{ paper.duration || '3 Hours' }}
-								</span>
+								<div class="flex items-center gap-2">
+									<span class="text-xs font-bold text-gray-700 font-mono">
+										{{ paper.total_marks }} Marks • {{ paper.duration || '3 Hours' }}
+									</span>
+									<button
+										class="p-1 text-gray-400 hover:text-red-600 rounded transition-colors"
+										:title="__('Delete Model Paper')"
+										@click="confirmDeleteModelPaper(paper)"
+									>
+										<span class="lucide-trash-2 size-4"></span>
+									</button>
+								</div>
 							</div>
 
 							<h4 class="text-base font-bold text-gray-900">
@@ -619,12 +628,27 @@
 								</Button>
 							</div>
 
-							<router-link
-								:to="{ name: 'AIQuestionPaperGenerator', query: { paper: paper.name } }"
-								class="text-xs text-violet-600 font-semibold hover:underline"
-							>
-								{{ __('Review & Edit') }} →
-							</router-link>
+							<div class="flex items-center gap-3">
+								<router-link
+									:to="{ name: 'AIQuestionPaperGenerator', query: { paper: paper.name, mode: 'edit' } }"
+									class="text-xs text-violet-600 font-semibold hover:underline flex items-center gap-1"
+								>
+									<span class="lucide-edit-3 size-3.5"></span>
+									{{ __('Review & Edit') }} →
+								</router-link>
+
+								<Button
+									variant="ghost"
+									theme="red"
+									size="sm"
+									:loading="deletingModelPaper === paper.name"
+									@click="confirmDeleteModelPaper(paper)"
+									:title="__('Delete this question paper')"
+								>
+									<template #prefix><span class="lucide-trash-2 size-3.5 text-red-500"></span></template>
+									{{ __('Delete') }}
+								</Button>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -685,6 +709,7 @@ const analysisDashboard = ref<any>({})
 const isAnalyzing = ref(false)
 const isSavingToBank = ref(false)
 const publishingPaper = ref<string | null>(null)
+const deletingModelPaper = ref<string | null>(null)
 const showUploadModal = ref(false)
 const showQuestionGeneratorModal = ref(false)
 const showModelPaperModal = ref(false)
@@ -937,6 +962,28 @@ async function publishPaper(paperName: string) {
 		toast.error(err.message || 'Failed to publish question paper.')
 	} finally {
 		publishingPaper.value = null
+	}
+}
+
+async function confirmDeleteModelPaper(paper: any) {
+	const paperTitle = paper.title || paper.name
+	if (!confirm(`Are you sure you want to delete this Model Question Paper "${paperTitle}"? This action cannot be undone.`)) {
+		return
+	}
+	deletingModelPaper.value = paper.name
+	try {
+		await createResource({
+			url: 'lms.lms.ai.ai_assessment_api.api_delete_question_paper',
+			params: {
+				name: paper.name,
+			},
+		}).fetch()
+		toast.success('Model question paper deleted successfully.')
+		await fetchModelPapers()
+	} catch (err: any) {
+		toast.error(err.message || 'Failed to delete question paper.')
+	} finally {
+		deletingModelPaper.value = null
 	}
 }
 </script>

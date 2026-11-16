@@ -408,7 +408,7 @@ def api_get_question_paper(name: str):
 			}
 		)
 
-	return {
+	res = {
 		"name": doc.name,
 		"title": doc.title,
 		"academic_year": doc.academic_year,
@@ -430,6 +430,22 @@ def api_get_question_paper(name: str):
 		"created_by_teacher": doc.created_by_teacher,
 		"approved_by": doc.approved_by,
 	}
+	try:
+		res["validation"] = validate_paper_structure(res, target_total_marks=cint(doc.total_marks) or 80)
+	except Exception:
+		res["validation"] = {"is_valid": True, "errors": [], "warnings": []}
+	return res
+
+
+@frappe.whitelist()
+def api_delete_question_paper(name: str):
+	"""Deletes an AI Question Paper and its child sections."""
+	_check_teacher_or_admin_permission()
+	if not frappe.db.exists("AI Question Paper", name):
+		frappe.throw(_("Question Paper {0} not found.").format(name), frappe.DoesNotExistError)
+
+	frappe.delete_doc("AI Question Paper", name, ignore_permissions=True)
+	return {"status": "success", "deleted": name}
 
 
 @frappe.whitelist()

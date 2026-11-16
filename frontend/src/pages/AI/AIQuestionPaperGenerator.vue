@@ -431,16 +431,31 @@
 
 				<!-- Toolbar for Preview -->
 				<div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-surface-base p-4 shadow-sm">
-					<div class="flex items-center gap-2">
-						<button
-							v-for="tab in ['paper', 'answer_key', 'solutions']"
-							:key="tab"
-							class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
-							:class="previewDocType === tab ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
-							@click="previewDocType = tab"
+					<div class="flex items-center gap-2 flex-wrap">
+						<!-- Toggle Edit Mode / Preview Mode -->
+						<Button
+							:variant="isEditMode ? 'solid' : 'outline'"
+							theme="violet"
+							size="sm"
+							@click="isEditMode = !isEditMode"
 						>
-							{{ tab === 'paper' ? __('1. Question Paper') : (tab === 'answer_key' ? __('2. Answer Key') : __('3. Detailed Solutions')) }}
-						</button>
+							<template #prefix>
+								<span :class="isEditMode ? 'lucide-eye size-3.5' : 'lucide-edit-3 size-3.5'"></span>
+							</template>
+							{{ isEditMode ? __('Preview Paper') : __('Edit Paper') }}
+						</Button>
+
+						<div v-if="!isEditMode" class="flex items-center gap-1 border-l pl-2">
+							<button
+								v-for="tab in ['paper', 'answer_key', 'solutions']"
+								:key="tab"
+								class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+								:class="previewDocType === tab ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'"
+								@click="previewDocType = tab"
+							>
+								{{ tab === 'paper' ? __('1. Question Paper') : (tab === 'answer_key' ? __('2. Answer Key') : __('3. Detailed Solutions')) }}
+							</button>
+						</div>
 					</div>
 
 					<div class="flex items-center gap-2 flex-wrap">
@@ -466,7 +481,7 @@
 							{{ __('Download PDF') }}
 						</Button>
 
-						<!-- Save as Draft (Shown when not Published) -->
+						<!-- Save as Draft / Save Changes -->
 						<Button
 							v-if="generatedPaper?.approval_status !== 'Published'"
 							variant="outline"
@@ -474,7 +489,8 @@
 							:loading="saving"
 							@click="savePaper('Draft')"
 						>
-							{{ __('Save as Draft') }}
+							<template #prefix><span class="lucide-save size-3.5"></span></template>
+							{{ isEditMode ? __('Save Changes') : __('Save as Draft') }}
 						</Button>
 
 						<!-- Submit for Approval (Shown when in Draft; disabled when already Submitted; hidden when Published/Principal Approved) -->
@@ -528,13 +544,60 @@
 						>
 							{{ __('Unpublish to Draft') }}
 						</Button>
+
+						<!-- Delete Paper -->
+						<Button
+							variant="ghost"
+							theme="red"
+							size="sm"
+							:loading="deleting"
+							@click="deleteCurrentPaper"
+							:title="__('Delete Question Paper')"
+						>
+							<template #prefix><span class="lucide-trash-2 size-3.5 text-red-500"></span></template>
+							{{ __('Delete') }}
+						</Button>
 					</div>
 				</div>
 
 				<!-- Paper Render Container -->
 				<div class="rounded-xl border bg-white p-8 shadow-md min-h-[600px] text-gray-900 space-y-6">
-					<!-- School Header -->
-					<div class="text-center border-b-2 border-gray-900 pb-4 space-y-1">
+					<!-- Edit Mode Banner -->
+					<div v-if="isEditMode" class="rounded-xl border border-violet-200 bg-violet-50/80 p-3.5 text-xs flex items-center justify-between gap-3 shadow-2xs">
+						<div class="flex items-center gap-2.5">
+							<span class="lucide-edit-3 size-4 text-violet-600 shrink-0"></span>
+							<div>
+								<span class="font-bold text-violet-950">{{ __('Edit Mode Active:') }}</span>
+								<span class="text-violet-800 ml-1">{{ __('You can edit the paper title, school name, instructions, sections, questions, marks, options, and model solutions. Continuous numbering and totals auto-recalculate.') }}</span>
+							</div>
+						</div>
+						<div class="flex items-center gap-2 font-mono font-bold text-violet-800 bg-white px-3 py-1 rounded-lg border border-violet-200 shadow-2xs shrink-0">
+							<span>{{ __('Total:') }} {{ generatedPaper.total_marks }} Marks</span>
+						</div>
+					</div>
+
+					<!-- School Header & Title -->
+					<div v-if="isEditMode" class="border-b-2 border-violet-300 pb-4 space-y-3">
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+							<div>
+								<label class="text-[11px] font-bold uppercase tracking-wider text-gray-600">{{ __('School / Institution Name') }}</label>
+								<input
+									v-model="generatedPaper.school_name"
+									class="w-full mt-1 font-bold text-sm border rounded-lg px-3 py-1.5 bg-white border-gray-300 focus:border-violet-500"
+									placeholder="IZENSPHERE INTERNATIONAL SCHOOL"
+								/>
+							</div>
+							<div>
+								<label class="text-[11px] font-bold uppercase tracking-wider text-gray-600">{{ __('Examination Title') }}</label>
+								<input
+									v-model="generatedPaper.title"
+									class="w-full mt-1 font-bold text-sm border rounded-lg px-3 py-1.5 bg-white border-gray-300 focus:border-violet-500"
+									placeholder="Midterm Examination"
+								/>
+							</div>
+						</div>
+					</div>
+					<div v-else class="text-center border-b-2 border-gray-900 pb-4 space-y-1">
 						<h2 class="text-xl font-bold tracking-wide uppercase">{{ generatedPaper.school_name || 'Izensphere International School' }}</h2>
 						<h3 class="text-base font-semibold text-gray-800">{{ generatedPaper.title }}</h3>
 						<div class="text-xs font-bold text-violet-800 uppercase tracking-widest">
@@ -543,7 +606,33 @@
 					</div>
 
 					<!-- Meta info grid -->
-					<div class="grid grid-cols-3 text-xs border-b pb-3 gap-2">
+					<div v-if="isEditMode" class="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs border-b pb-4 bg-gray-50/70 p-3 rounded-lg border">
+						<div>
+							<label class="font-bold text-gray-600 block">{{ __('Class:') }}</label>
+							<input v-model="generatedPaper.class_level" class="w-full mt-1 border rounded px-2 py-1 bg-white text-xs" />
+						</div>
+						<div>
+							<label class="font-bold text-gray-600 block">{{ __('Subject:') }}</label>
+							<input v-model="generatedPaper.subject" class="w-full mt-1 border rounded px-2 py-1 bg-white text-xs" />
+						</div>
+						<div>
+							<label class="font-bold text-gray-600 block">{{ __('Academic Year:') }}</label>
+							<input v-model="generatedPaper.academic_year" class="w-full mt-1 border rounded px-2 py-1 bg-white text-xs" />
+						</div>
+						<div>
+							<label class="font-bold text-gray-600 block">{{ __('Duration:') }}</label>
+							<input v-model="generatedPaper.duration" class="w-full mt-1 border rounded px-2 py-1 bg-white text-xs" />
+						</div>
+						<div>
+							<label class="font-bold text-gray-600 block">{{ __('Date:') }}</label>
+							<input v-model="generatedPaper.examination_date" type="date" class="w-full mt-1 border rounded px-2 py-1 bg-white text-xs" />
+						</div>
+						<div>
+							<label class="font-bold text-gray-600 block">{{ __('Total Marks (Auto-Calculated):') }}</label>
+							<input :value="generatedPaper.total_marks" readonly disabled class="w-full mt-1 border rounded px-2 py-1 bg-gray-100 font-bold text-xs text-violet-800" />
+						</div>
+					</div>
+					<div v-else class="grid grid-cols-3 text-xs border-b pb-3 gap-2">
 						<div><strong>{{ __('Class:') }}</strong> {{ generatedPaper.class_level }}</div>
 						<div><strong>{{ __('Subject:') }}</strong> {{ generatedPaper.subject }}</div>
 						<div class="text-right"><strong>{{ __('Academic Year:') }}</strong> {{ generatedPaper.academic_year }}</div>
@@ -553,13 +642,259 @@
 					</div>
 
 					<!-- Instructions -->
-					<div v-if="generatedPaper.instructions && previewDocType === 'paper'" class="rounded border p-3 bg-gray-50 text-xs space-y-1">
+					<div v-if="isEditMode" class="space-y-1">
+						<label class="font-bold text-xs uppercase tracking-wider text-gray-700">{{ __('General Instructions (one per line):') }}</label>
+						<textarea
+							v-model="generatedPaper.instructions"
+							rows="3"
+							class="w-full border rounded-lg p-2.5 text-xs bg-white border-gray-300 focus:border-violet-500 font-sans"
+							placeholder="1. Answer all questions...\n2. Figures to the right indicate full marks..."
+						></textarea>
+					</div>
+					<div v-else-if="generatedPaper.instructions && previewDocType === 'paper'" class="rounded border p-3 bg-gray-50 text-xs space-y-1">
 						<div class="font-bold uppercase tracking-wider text-gray-800">{{ __('General Instructions:') }}</div>
 						<div class="whitespace-pre-line text-gray-700">{{ generatedPaper.instructions }}</div>
 					</div>
 
-					<!-- Sections -->
-					<div class="space-y-6">
+					<!-- SECTIONS IN EDIT MODE -->
+					<div v-if="isEditMode" class="space-y-6">
+						<div
+							v-for="(sec, sIdx) in generatedPaper.sections"
+							:key="'edit_sec_' + sIdx"
+							class="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-2xs"
+						>
+							<!-- Section Header -->
+							<div class="flex items-center justify-between bg-violet-50 p-2.5 rounded-lg border border-violet-200 font-bold text-sm text-gray-900 gap-2 flex-wrap">
+								<div class="flex items-center gap-2 flex-1 min-w-[200px]">
+									<input
+										v-model="sec.section_name"
+										class="w-28 font-bold text-xs bg-white border border-gray-300 rounded px-2 py-1"
+										placeholder="Section Name"
+									/>
+									<span class="text-gray-400">:</span>
+									<input
+										v-model="sec.title"
+										class="flex-1 font-semibold text-xs bg-white border border-gray-300 rounded px-2 py-1"
+										placeholder="Section Title"
+									/>
+								</div>
+								<div class="flex items-center gap-3">
+									<span class="text-xs font-mono font-bold text-violet-800 bg-white px-2 py-1 rounded border border-violet-200">
+										{{ sec.total_marks }} Marks ({{ sec.questions?.length || 0 }} Qs)
+									</span>
+									<Button size="xs" variant="solid" theme="violet" @click="addQuestionToSection(sIdx)">
+										<template #prefix><span class="lucide-plus size-3"></span></template>
+										{{ __('+ Add Question') }}
+									</Button>
+								</div>
+							</div>
+
+							<div>
+								<input
+									v-model="sec.instructions"
+									class="w-full text-xs italic bg-gray-50 border border-gray-200 rounded px-2 py-1 text-gray-700"
+									placeholder="Section instructions (e.g. All questions are compulsory. Each carries 1 mark.)"
+								/>
+							</div>
+
+							<!-- Questions in Section -->
+							<div class="space-y-4 pt-2">
+								<div
+									v-for="(q, qIdx) in sec.questions"
+									:key="'edit_q_' + qIdx"
+									class="rounded-lg border border-gray-200 bg-slate-50/50 p-3.5 space-y-3 hover:border-violet-300 transition-colors"
+								>
+									<!-- Top Question Row: Number, Textarea, Marks, Difficulty, Actions -->
+									<div class="flex items-start gap-2.5">
+										<span class="font-bold text-sm text-violet-900 pt-1 shrink-0">
+											Q{{ q.question_number }}.
+										</span>
+										<div class="flex-1 space-y-1">
+											<textarea
+												v-model="q.question"
+												rows="2"
+												class="w-full text-sm font-medium border border-gray-300 rounded-lg p-2 bg-white focus:border-violet-500"
+												placeholder="Enter question statement here..."
+											></textarea>
+										</div>
+										<div class="flex items-center gap-2 shrink-0">
+											<div class="flex flex-col items-center">
+												<span class="text-[10px] uppercase font-bold text-gray-500">{{ __('Marks') }}</span>
+												<input
+													type="number"
+													min="1"
+													v-model.number="q.marks"
+													@input="recalculatePaperTotals"
+													class="w-14 text-center font-bold text-xs border border-gray-300 rounded p-1 bg-white"
+												/>
+											</div>
+											<div class="flex flex-col items-center">
+												<span class="text-[10px] uppercase font-bold text-gray-500">{{ __('Level') }}</span>
+												<select
+													v-model="q.difficulty"
+													class="text-xs border border-gray-300 rounded p-1 bg-white"
+												>
+													<option value="Easy">Easy</option>
+													<option value="Medium">Medium</option>
+													<option value="Hard">Hard</option>
+												</select>
+											</div>
+											<!-- Reorder & Delete -->
+											<div class="flex items-center gap-1 pt-3">
+												<button
+													:disabled="qIdx === 0"
+													@click="moveQuestion(sIdx, qIdx, -1)"
+													class="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30"
+													:title="__('Move Up')"
+												>
+													<span class="lucide-chevron-up size-4"></span>
+												</button>
+												<button
+													:disabled="qIdx === sec.questions.length - 1"
+													@click="moveQuestion(sIdx, qIdx, 1)"
+													class="p-1 rounded text-gray-400 hover:text-gray-700 disabled:opacity-30"
+													:title="__('Move Down')"
+												>
+													<span class="lucide-chevron-down size-4"></span>
+												</button>
+												<button
+													@click="deleteQuestion(sIdx, qIdx)"
+													class="p-1 rounded text-red-400 hover:text-red-700 hover:bg-red-50"
+													:title="__('Delete Question')"
+												>
+													<span class="lucide-trash-2 size-4"></span>
+												</button>
+											</div>
+										</div>
+									</div>
+
+									<!-- MCQ Options (if present) -->
+									<div v-if="q.options && q.options.length" class="ps-6 space-y-2">
+										<div class="text-[11px] font-bold text-gray-600 flex items-center justify-between">
+											<span>{{ __('Options (Select radio for correct answer):') }}</span>
+											<button
+												@click="addOption(q)"
+												class="text-violet-600 hover:underline font-semibold flex items-center gap-1 text-[11px]"
+											>
+												<span class="lucide-plus size-3"></span> {{ __('Add Option') }}
+											</button>
+										</div>
+										<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+											<div
+												v-for="(opt, optIdx) in q.options"
+												:key="optIdx"
+												class="flex items-center gap-1.5 bg-white p-1.5 rounded border border-gray-200"
+											>
+												<input
+													type="radio"
+													:name="'mcq_correct_' + sIdx + '_' + qIdx"
+													:checked="isCorrectOption(q.correct_answer, opt, optIdx)"
+													@change="setCorrectOption(q, opt, optIdx)"
+													:title="__('Mark as correct answer')"
+													class="text-violet-600 focus:ring-violet-500"
+												/>
+												<span class="font-bold text-xs text-gray-600">{{ String.fromCharCode(65 + optIdx) }}.</span>
+												<input
+													v-model="q.options[optIdx]"
+													class="flex-1 text-xs border-0 p-0 focus:ring-0 text-gray-900"
+													placeholder="Option text"
+												/>
+												<button
+													@click="removeOption(q, optIdx)"
+													class="text-gray-400 hover:text-red-500 p-0.5"
+													:title="__('Remove option')"
+												>
+													<span class="lucide-x size-3"></span>
+												</button>
+											</div>
+										</div>
+									</div>
+									<div v-else-if="sec.question_type === 'MCQ' || sec.title?.toLowerCase().includes('mcq')" class="ps-6">
+										<button
+											@click="addOption(q)"
+											class="text-xs text-violet-600 hover:underline font-semibold flex items-center gap-1"
+										>
+											<span class="lucide-plus size-3"></span> {{ __('Add MCQ Options') }}
+										</button>
+									</div>
+
+									<!-- Answer Key & Rubric -->
+									<div class="ps-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+										<div class="space-y-1">
+											<label class="font-bold text-emerald-900 block text-[11px]">
+												{{ __('Correct Answer / Answer Key:') }}
+											</label>
+											<input
+												v-model="q.correct_answer"
+												class="w-full border border-emerald-300 rounded p-1.5 bg-white text-xs font-medium"
+												placeholder="e.g. Option A or concise answer statement"
+											/>
+										</div>
+										<div class="space-y-1">
+											<label class="font-bold text-emerald-900 block text-[11px]">
+												{{ __('Marking Scheme & Detailed Rubric:') }}
+											</label>
+											<textarea
+												v-model="q.solution"
+												rows="2"
+												class="w-full border border-emerald-300 rounded p-1.5 bg-white text-xs"
+												placeholder="Detailed grading rubric and model solution..."
+											></textarea>
+										</div>
+									</div>
+
+									<!-- Internal Choice (OR Question) -->
+									<div class="ps-6">
+										<div v-if="q.internal_choice_question" class="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2">
+											<div class="flex items-center justify-between text-xs font-bold text-indigo-950">
+												<span>--- {{ __('OR Alternative Choice Question') }} ---</span>
+												<button
+													@click="removeInternalChoice(q)"
+													class="text-red-600 hover:underline text-[11px] font-semibold"
+												>
+													{{ __('Remove OR Choice') }}
+												</button>
+											</div>
+											<textarea
+												v-model="q.internal_choice_question.question"
+												rows="2"
+												class="w-full text-xs border border-indigo-200 rounded p-1.5 bg-white"
+												placeholder="Alternative OR question statement..."
+											></textarea>
+											<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+												<div>
+													<label class="text-[10px] font-bold text-indigo-900">{{ __('OR Correct Answer:') }}</label>
+													<input
+														v-model="q.internal_choice_question.correct_answer"
+														class="w-full text-xs border rounded p-1 bg-white"
+													/>
+												</div>
+												<div>
+													<label class="text-[10px] font-bold text-indigo-900">{{ __('OR Solution / Rubric:') }}</label>
+													<input
+														v-model="q.internal_choice_question.solution"
+														class="w-full text-xs border rounded p-1 bg-white"
+													/>
+												</div>
+											</div>
+										</div>
+										<div v-else>
+											<button
+												@click="addInternalChoice(q)"
+												class="text-xs text-indigo-600 hover:underline font-semibold flex items-center gap-1"
+											>
+												<span class="lucide-git-branch size-3"></span>
+												{{ __('+ Add Internal Choice ("OR" Question)') }}
+											</button>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- SECTIONS IN PREVIEW / PRINT MODE -->
+					<div v-else class="space-y-6">
 						<div v-for="(sec, sIdx) in generatedPaper.sections" :key="sIdx" class="space-y-3">
 							<!-- Section Banner -->
 							<div class="flex items-center justify-between bg-gray-100 p-2 border-y border-gray-400 font-bold text-sm text-gray-800">
@@ -769,8 +1104,9 @@
 						</div>
 
 						<div class="flex items-center justify-between border-t pt-3 gap-2">
-							<Button size="sm" variant="ghost" @click="openSavedPaper(p.name)">
-								{{ __('View & Edit') }}
+							<Button size="sm" variant="ghost" theme="violet" @click="openSavedPaper(p.name, true)">
+								<template #prefix><span class="lucide-edit-3 size-3.5 text-violet-600"></span></template>
+								{{ __('Review & Edit') }}
 							</Button>
 							<div class="flex items-center gap-1">
 								<Button size="sm" variant="outline" @click="downloadSavedPaperPDF(p.name, 'question_paper')">
@@ -778,6 +1114,16 @@
 								</Button>
 								<Button size="sm" variant="outline" @click="downloadSavedPaperPDF(p.name, 'solutions')">
 									{{ __('Solutions') }}
+								</Button>
+								<Button
+									size="sm"
+									variant="ghost"
+									theme="red"
+									:loading="deletingPaperName === p.name"
+									@click="deleteSavedPaperFromList(p)"
+									:title="__('Delete Question Paper')"
+								>
+									<template #prefix><span class="lucide-trash-2 size-3.5 text-red-500"></span></template>
 								</Button>
 							</div>
 						</div>
@@ -798,9 +1144,12 @@ const route = useRoute()
 
 const activeView = ref('generator')
 const previewDocType = ref('paper')
+const isEditMode = ref(false)
 const generating = ref(false)
 const saving = ref(false)
 const downloading = ref(false)
+const deleting = ref(false)
+const deletingPaperName = ref(null)
 const loadingSaved = ref(false)
 
 const coursesList = ref([])
@@ -853,7 +1202,7 @@ onMounted(async () => {
 	await loadCourses()
 	await loadSavedPapers()
 	if (route.query.paper) {
-		await openSavedPaper(route.query.paper)
+		await openSavedPaper(route.query.paper, route.query.mode === 'edit')
 	} else if (route.query.batch) {
 		form.batch = route.query.batch
 		await onBatchSelect()
@@ -1084,7 +1433,7 @@ async function loadSavedPapers() {
 	}
 }
 
-async function openSavedPaper(paperName) {
+async function openSavedPaper(paperName, editMode = false) {
 	try {
 		const res = await call('lms.lms.ai.ai_assessment_api.api_get_question_paper', {
 			name: paperName,
@@ -1092,11 +1441,164 @@ async function openSavedPaper(paperName) {
 		if (res) {
 			generatedPaper.value = res
 			activeView.value = 'preview'
+			if (editMode || route.query.mode === 'edit') {
+				isEditMode.value = true
+			}
 		}
 	} catch (e) {
 		toast.error(__('Failed to load question paper details.'))
 	}
 }
+
+function recalculatePaperTotals() {
+	if (!generatedPaper.value?.sections) return
+	let runningQNum = 1
+	let grandTotal = 0
+
+	generatedPaper.value.sections.forEach((sec) => {
+		sec.questions_count = sec.questions ? sec.questions.length : 0
+		let secTotal = 0
+		if (sec.questions) {
+			sec.questions.forEach((q) => {
+				q.question_number = runningQNum++
+				secTotal += Number(q.marks) || 0
+			})
+		}
+		sec.total_marks = secTotal
+		grandTotal += secTotal
+	})
+
+	generatedPaper.value.total_marks = grandTotal
+
+	if (generatedPaper.value.validation) {
+		generatedPaper.value.validation.calculated_total_marks = grandTotal
+		generatedPaper.value.validation.target_total_marks = grandTotal
+		generatedPaper.value.validation.is_valid = true
+		generatedPaper.value.validation.errors = []
+	}
+}
+
+function deleteQuestion(sIdx, qIdx) {
+	if (!confirm(__('Are you sure you want to delete this question?'))) return
+	const sec = generatedPaper.value?.sections?.[sIdx]
+	if (sec?.questions) {
+		sec.questions.splice(qIdx, 1)
+		recalculatePaperTotals()
+		toast.success(__('Question deleted.'))
+	}
+}
+
+function moveQuestion(sIdx, qIdx, direction) {
+	const sec = generatedPaper.value?.sections?.[sIdx]
+	if (!sec?.questions) return
+	const targetIdx = qIdx + direction
+	if (targetIdx < 0 || targetIdx >= sec.questions.length) return
+	const [item] = sec.questions.splice(qIdx, 1)
+	sec.questions.splice(targetIdx, 0, item)
+	recalculatePaperTotals()
+}
+
+function addQuestionToSection(sIdx) {
+	const sec = generatedPaper.value?.sections?.[sIdx]
+	if (!sec) return
+	if (!sec.questions) sec.questions = []
+	const defaultMarks = Number(sec.marks_per_question) || (sec.question_type === 'MCQ' ? 1 : 3)
+	const isMCQ = sec.question_type === 'MCQ' || sec.title?.toLowerCase().includes('mcq') || sec.title?.toLowerCase().includes('multiple choice')
+	const newQ = {
+		question_number: 1,
+		question: 'New Question: Enter statement here',
+		marks: defaultMarks,
+		difficulty: 'Medium',
+		options: isMCQ ? ['Option A', 'Option B', 'Option C', 'Option D'] : undefined,
+		correct_answer: isMCQ ? 'Option A' : 'Model Answer / Solution Summary',
+		solution: 'Detailed step-by-step solution and grading rubric.',
+		internal_choice_question: null,
+	}
+	sec.questions.push(newQ)
+	recalculatePaperTotals()
+	toast.success(__('Question added to section.'))
+}
+
+function addOption(q) {
+	if (!q.options) q.options = []
+	const nextLetter = String.fromCharCode(65 + q.options.length)
+	q.options.push(`Option ${nextLetter}`)
+}
+
+function removeOption(q, optIdx) {
+	if (!q.options || q.options.length <= 2) {
+		toast.error(__('A multiple choice question must have at least 2 options.'))
+		return
+	}
+	q.options.splice(optIdx, 1)
+}
+
+function setCorrectOption(q, opt, optIdx) {
+	q.correct_answer = opt
+}
+
+function addInternalChoice(q) {
+	q.internal_choice_question = {
+		question: 'Alternative OR Question: Enter statement here',
+		marks: q.marks,
+		correct_answer: 'Alternative question correct answer',
+		solution: 'Alternative question step-by-step solution.',
+	}
+}
+
+function removeInternalChoice(q) {
+	q.internal_choice_question = null
+}
+
+async function deleteCurrentPaper() {
+	if (!generatedPaper.value?.name) {
+		generatedPaper.value = null
+		activeView.value = 'generator'
+		return
+	}
+	const paperName = generatedPaper.value.name
+	const paperTitle = generatedPaper.value.title || paperName
+	if (!confirm(__('Are you sure you want to delete this Question Paper "{0}" ({1})? This action cannot be undone.').format(paperTitle, paperName))) {
+		return
+	}
+	deleting.value = true
+	try {
+		await call('lms.lms.ai.ai_assessment_api.api_delete_question_paper', {
+			name: paperName,
+		})
+		toast.success(__('Question paper deleted successfully.'))
+		generatedPaper.value = null
+		await loadSavedPapers()
+		activeView.value = 'saved_list'
+	} catch (e) {
+		toast.error(e.message || __('Failed to delete question paper.'))
+	} finally {
+		deleting.value = false
+	}
+}
+
+async function deleteSavedPaperFromList(p) {
+	const paperTitle = p.title || p.name
+	if (!confirm(__('Are you sure you want to delete Question Paper "{0}" ({1})? This action cannot be undone.').format(paperTitle, p.name))) {
+		return
+	}
+	deletingPaperName.value = p.name
+	try {
+		await call('lms.lms.ai.ai_assessment_api.api_delete_question_paper', {
+			name: p.name,
+		})
+		toast.success(__('Question paper deleted successfully.'))
+		if (generatedPaper.value?.name === p.name) {
+			generatedPaper.value = null
+		}
+		await loadSavedPapers()
+	} catch (e) {
+		toast.error(e.message || __('Failed to delete question paper.'))
+	} finally {
+		deletingPaperName.value = null
+	}
+}
+
 function isCorrectOption(correctAnswer, optText, optIdx) {
 	if (!correctAnswer || !optText) return false
 	const ans = String(correctAnswer).trim().toLowerCase()

@@ -43,6 +43,7 @@ from lms.lms.ai.analytics import get_quiz_assessment_report
 from lms.lms.ai.ai_assessment_api import (
 	api_save_ai_settings,
 	api_test_ai_connection,
+	api_delete_question_paper,
 )
 
 
@@ -415,3 +416,40 @@ class TestAIAssessmentGenerator(FrappeTestCase):
 		self.assertIn("quiz_title", report)
 		self.assertIn("recommendations", report)
 		self.assertIsInstance(report["recommendations"], list)
+
+	def test_delete_question_paper(self):
+		"""Verify deleting a question paper and its child sections via api_delete_question_paper."""
+		frappe.set_user("Administrator")
+		paper_data = {
+			"title": "Temporary Paper to Delete",
+			"academic_year": "2026-27",
+			"class_level": "Class 10",
+			"subject": "CS",
+			"total_marks": 2,
+			"duration": "1 Hour",
+			"sections": [
+				{
+					"section_name": "Section A",
+					"title": "MCQ",
+					"question_type": "MCQ",
+					"marks_per_question": 1,
+					"questions_count": 2,
+					"total_marks": 2,
+					"questions": [
+						{"question_number": 1, "question": "Q1?", "marks": 1, "options": ["A", "B"], "correct_answer": "A"},
+						{"question_number": 2, "question": "Q2?", "marks": 1, "options": ["A", "B"], "correct_answer": "B"},
+					],
+				}
+			],
+		}
+		saved = save_ai_question_paper(paper_data, action="Draft")
+		paper_name = saved["name"]
+		self.assertTrue(frappe.db.exists("AI Question Paper", paper_name))
+
+		# Delete paper
+		res = api_delete_question_paper(paper_name)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(res["deleted"], paper_name)
+		self.assertFalse(frappe.db.exists("AI Question Paper", paper_name))
+		# Child sections must also be removed
+		self.assertFalse(frappe.db.exists("AI Question Paper Section", {"parent": paper_name}))
