@@ -93,7 +93,23 @@
 
 				<!-- Filtering Controls -->
 				<div class="rounded-xl border bg-surface-base p-4 shadow-sm space-y-3">
-					<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+					<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+						<!-- Course Filter (Enrolled Courses Only) -->
+						<div>
+							<label class="block text-xs font-semibold text-gray-700 mb-1">
+								{{ __('Course') }} <span class="text-violet-600 font-bold">*</span>
+							</label>
+							<select
+								v-model="selectedCourse"
+								class="w-full rounded-md border border-violet-300 bg-violet-50/40 px-3 py-1.5 text-xs text-violet-950 font-bold focus:border-violet-500 focus:ring-1 focus:ring-violet-500 shadow-2xs"
+								@change="onSelectCourse(selectedCourse)"
+							>
+								<option v-for="c in enrolledCourses" :key="c.name" :value="c.name">
+									{{ c.title }}
+								</option>
+							</select>
+						</div>
+
 						<!-- Chapter Filter -->
 						<div>
 							<label class="block text-xs font-medium text-ink-gray-7 mb-1">{{ __('Chapter / Unit') }}</label>
@@ -151,11 +167,19 @@
 							/>
 						</div>
 
-						<!-- Filter Action -->
-						<div class="flex items-end">
-							<Button variant="solid" theme="violet" class="w-full" size="sm" @click="fetchQuestions">
+						<!-- Filter Actions -->
+						<div class="flex items-end gap-1.5">
+							<Button variant="solid" theme="violet" class="flex-1" size="sm" @click="fetchQuestions">
 								<template #prefix><span class="lucide-filter size-3.5"></span></template>
-								{{ __('Apply Filters') }}
+								{{ __('Apply') }}
+							</Button>
+							<Button
+								variant="outline"
+								size="sm"
+								title="Reset all filters"
+								@click="resetFilters"
+							>
+								<span class="lucide-rotate-ccw size-3.5"></span>
 							</Button>
 						</div>
 					</div>
@@ -673,12 +697,20 @@ async function loadEnrolledCourses() {
 }
 
 async function onSelectCourse(courseName) {
-	if (selectedCourse.value === courseName) return
+	if (!courseName) return
 	selectedCourse.value = courseName
 	filters.chapter = ''
 	currentQuestionIndex.value = 0
 	resetCurrentQuestion()
 	await fetchQuestions()
+}
+
+function resetFilters() {
+	filters.chapter = ''
+	filters.difficulty = 'All'
+	filters.type = 'All'
+	filters.search_query = ''
+	fetchQuestions()
 }
 
 async function fetchQuestions() {
