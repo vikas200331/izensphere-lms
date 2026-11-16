@@ -116,26 +116,61 @@
 					</div>
 
 					<div>
-						<div class="flex justify-between items-center mb-1">
+						<div class="flex justify-between items-center mb-1.5">
 							<label class="block text-xs font-semibold uppercase text-gray-600">
-								{{ __('Number of Questions') }}
+								{{ __('Number of Questions') }} *
 							</label>
-							<span class="text-xs font-bold text-violet-700 bg-violet-100 px-2 py-0.5 rounded-full">
-								{{ form.number_of_questions }} Questions
+							<span class="text-xs font-bold text-violet-700 bg-violet-100 px-2.5 py-0.5 rounded-full">
+								{{ form.number_of_questions }} {{ __('Questions') }}
 							</span>
 						</div>
+
+						<!-- Direct Number Input -->
+						<div class="relative mb-2">
+							<input
+								v-model.number="form.number_of_questions"
+								type="number"
+								min="1"
+								max="100"
+								step="1"
+								placeholder="e.g. 10"
+								class="w-full text-sm font-semibold rounded-lg border-gray-300 focus:border-violet-500 focus:ring-violet-500 pr-16"
+							/>
+							<span class="absolute inset-y-0 right-3 flex items-center text-xs text-gray-400 pointer-events-none">
+								{{ __('items') }}
+							</span>
+						</div>
+
+						<!-- Quick Presets -->
+						<div class="flex items-center gap-1.5 flex-wrap mb-2">
+							<span class="text-[11px] text-gray-400 mr-1 font-medium">{{ __('Presets:') }}</span>
+							<button
+								v-for="count in [5, 10, 15, 20, 25, 30, 50]"
+								:key="count"
+								type="button"
+								class="px-2.5 py-1 text-xs rounded-md border transition-all cursor-pointer font-medium"
+								:class="form.number_of_questions === count ? 'bg-violet-600 text-white border-violet-600 font-bold shadow-sm' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-violet-300'"
+								@click="form.number_of_questions = count"
+							>
+								{{ count }}
+							</button>
+						</div>
+
+						<!-- Styled Range Slider -->
 						<input
 							v-model.number="form.number_of_questions"
 							type="range"
-							min="5"
+							min="1"
 							max="50"
-							step="5"
-							class="w-full accent-violet-600 cursor-pointer"
+							step="1"
+							class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
 						/>
-						<div class="flex justify-between text-[10px] text-gray-400 mt-0.5">
-							<span>5</span>
-							<span>15</span>
+						<div class="flex justify-between text-[10px] text-gray-400 mt-1">
+							<span>1</span>
+							<span>10</span>
+							<span>20</span>
 							<span>30</span>
+							<span>40</span>
 							<span>50</span>
 						</div>
 					</div>
