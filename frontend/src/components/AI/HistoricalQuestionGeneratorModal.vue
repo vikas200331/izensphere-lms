@@ -125,24 +125,41 @@
 							</span>
 						</div>
 
-						<!-- Direct Number Input -->
-						<div class="relative mb-2">
-							<input
-								v-model.number="form.number_of_questions"
-								type="number"
-								min="1"
-								max="100"
-								step="1"
-								placeholder="e.g. 10"
-								class="w-full text-sm font-semibold rounded-lg border-gray-300 focus:border-violet-500 focus:ring-violet-500 pr-16"
-							/>
-							<span class="absolute inset-y-0 right-3 flex items-center text-xs text-gray-400 pointer-events-none">
-								{{ __('items') }}
-							</span>
+						<!-- Stepper & Direct Input -->
+						<div class="flex items-center gap-2 mb-2">
+							<button
+								type="button"
+								class="size-9 rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-700 font-bold text-base transition-colors select-none"
+								title="Decrease"
+								@click="form.number_of_questions = Math.max(1, (Number(form.number_of_questions) || 10) - 1)"
+							>
+								−
+							</button>
+
+							<div class="relative flex-1">
+								<input
+									v-model.number="form.number_of_questions"
+									type="number"
+									min="1"
+									max="100"
+									step="1"
+									placeholder="e.g. 10"
+									class="w-full text-sm font-bold text-center rounded-lg border-gray-300 focus:border-violet-500 focus:ring-violet-500 py-2"
+								/>
+							</div>
+
+							<button
+								type="button"
+								class="size-9 rounded-lg border border-gray-300 bg-gray-50 hover:bg-gray-100 flex items-center justify-center text-gray-700 font-bold text-base transition-colors select-none"
+								title="Increase"
+								@click="form.number_of_questions = Math.min(100, (Number(form.number_of_questions) || 10) + 1)"
+							>
+								+
+							</button>
 						</div>
 
 						<!-- Quick Presets -->
-						<div class="flex items-center gap-1.5 flex-wrap mb-2">
+						<div class="flex items-center gap-1.5 flex-wrap">
 							<span class="text-[11px] text-gray-400 mr-1 font-medium">{{ __('Presets:') }}</span>
 							<button
 								v-for="count in [5, 10, 15, 20, 25, 30, 50]"
@@ -154,24 +171,6 @@
 							>
 								{{ count }}
 							</button>
-						</div>
-
-						<!-- Styled Range Slider -->
-						<input
-							v-model.number="form.number_of_questions"
-							type="range"
-							min="1"
-							max="50"
-							step="1"
-							class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-violet-600"
-						/>
-						<div class="flex justify-between text-[10px] text-gray-400 mt-1">
-							<span>1</span>
-							<span>10</span>
-							<span>20</span>
-							<span>30</span>
-							<span>40</span>
-							<span>50</span>
 						</div>
 					</div>
 
