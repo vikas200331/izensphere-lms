@@ -3904,7 +3904,7 @@ def get_pending_content_for_principal() -> list:
 	quizzes = frappe.get_all(
 		"LMS Quiz",
 		filters={"release_status": "Pending Principal Approval"},
-		fields=["name", "title", "course", "lesson", "owner", "modified", "creation", "rejection_reason"],
+		fields=["name", "title", "course", "lesson", "total_marks", "owner", "modified", "creation", "rejection_reason"],
 		order_by="modified desc",
 	)
 	for q in quizzes:
@@ -3918,6 +3918,7 @@ def get_pending_content_for_principal() -> list:
 			"course": q.course,
 			"course_title": course_title,
 			"lesson": q.lesson,
+			"total_marks": q.total_marks,
 			"owner": q.owner,
 			"modified": str(q.modified),
 			"creation": str(q.creation),
@@ -3972,7 +3973,7 @@ def get_pending_content_for_principal() -> list:
 	pending_batches = frappe.get_all(
 		"LMS Batch",
 		filters={"workflow_state": "Pending Principal Approval"},
-		fields=["name", "title", "owner", "modified", "creation"],
+		fields=["name", "title", "start_date", "owner", "modified", "creation"],
 		order_by="modified desc",
 	)
 	for b in pending_batches:
@@ -3984,6 +3985,7 @@ def get_pending_content_for_principal() -> list:
 			"content_type": "Batch",
 			"batch": b.name,
 			"batch_title": b.title,
+			"start_date": str(b.start_date) if b.start_date else None,
 			"owner": b.owner,
 			"modified": str(b.modified),
 			"creation": str(b.creation),

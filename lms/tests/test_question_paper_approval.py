@@ -82,3 +82,17 @@ class TestQuestionPaperApproval(FrappeTestCase):
 			frappe.set_user("Administrator")
 			if frappe.db.exists("AI Question Paper", paper_name):
 				frappe.delete_doc("AI Question Paper", paper_name, force=True)
+
+	def test_all_approval_categories_structure(self):
+		"""Verify that all approval items returned by get_pending_content_for_principal
+		contain content_type, doctype, name, title, and proper categorization."""
+		frappe.set_user(self.principal)
+		items = get_pending_content_for_principal()
+		valid_types = {"Question Paper", "Quiz", "Assessment", "Course", "Batch", "Lesson", "Chapter"}
+		for item in items:
+			self.assertIn("content_type", item)
+			self.assertIn(item["content_type"], valid_types)
+			self.assertIn("doctype", item)
+			self.assertIn("name", item)
+			self.assertIn("title", item)
+			self.assertIn("owner", item)
