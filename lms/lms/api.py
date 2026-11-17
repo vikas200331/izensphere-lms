@@ -489,6 +489,9 @@ def get_branding():
 		else:
 			settings.update({field: value})
 
+	# Izen Learning specific branding: preserve "Izen Academy" for LMS while main portal uses "Izensphere Stay and Dine"
+	settings.app_name = "Izen Academy"
+
 	return settings
 
 
