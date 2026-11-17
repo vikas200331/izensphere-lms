@@ -77,7 +77,7 @@
 			</div>
 			<div v-else-if="!pendingContent.data?.length" class="text-center py-12 text-ink-gray-5">
 				<p class="text-base font-medium">{{ __('No new content pending approval.') }}</p>
-				<p class="text-sm mt-1 text-ink-gray-4">{{ __('When teachers submit newly added chapters, lessons, quizzes, or assessments in published courses and batches, they will appear here.') }}</p>
+				<p class="text-sm mt-1 text-ink-gray-4">{{ __('When teachers submit newly added chapters, lessons, quizzes, assessments, or question papers in published courses and batches, they will appear here.') }}</p>
 			</div>
 			<div v-else class="space-y-4">
 				<!-- Filter & Bulk Actions Bar -->
@@ -167,6 +167,14 @@
 									>
 										{{ item.batch_title }}
 									</router-link>
+								</div>
+								<div v-if="item.class_level || item.subject" class="flex items-center gap-1.5 truncate">
+									<span class="font-medium text-ink-gray-7">{{ __('Subject:') }}</span>
+									<span class="truncate">{{ item.subject }} ({{ item.class_level }})</span>
+								</div>
+								<div v-if="item.total_marks" class="flex items-center gap-1.5 truncate">
+									<span class="font-medium text-ink-gray-7">{{ __('Marks:') }}</span>
+									<span class="truncate font-semibold">{{ item.total_marks }} {{ __('Marks') }}</span>
 								</div>
 								<div class="flex items-center gap-1.5 truncate">
 									<span class="font-medium text-ink-gray-7">{{ __('Submitted by:') }}</span>
@@ -339,6 +347,8 @@ const getContentTypeBadgeTheme = (type) => {
 			return 'cyan'
 		case 'Batch':
 			return 'amber'
+		case 'Question Paper':
+			return 'violet'
 		default:
 			return 'gray'
 	}
@@ -380,6 +390,9 @@ const getItemLink = (item) => {
 	}
 	if (item.doctype === 'LMS Assessment' && item.batch) {
 		return { name: 'BatchDetail', params: { batchName: item.batch } }
+	}
+	if (item.doctype === 'AI Question Paper') {
+		return { name: 'AIQuestionPaperGenerator', query: { paper: item.name } }
 	}
 	return null
 }

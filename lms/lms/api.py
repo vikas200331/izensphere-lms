@@ -2735,6 +2735,15 @@ def process_approval(doctype: str, docname: str, action: str, comments: str = ""
 		else:
 			frappe.throw(_("Invalid action: {0}").format(action))
 
+	if doctype == "AI Question Paper":
+		from lms.lms.ai.ai_assessment_api import api_publish_assessment, api_reject_assessment
+		if action == "Approve":
+			return api_publish_assessment("AI Question Paper", docname)
+		elif action == "Reject":
+			return api_reject_assessment("AI Question Paper", docname, reason=comments)
+		else:
+			frappe.throw(_("Invalid action: {0}").format(action))
+
 	if doctype not in ["LMS Course", "LMS Batch"]:
 		frappe.throw("Invalid DocType")
 	
@@ -3979,6 +3988,56 @@ def get_pending_content_for_principal() -> list:
 			"modified": str(b.modified),
 			"creation": str(b.creation),
 		})
+
+	# 7. AI Question Papers pending approval
+	if frappe.db.table_exists("AI Question Paper"):
+		papers = frappe.get_all(
+			"AI Question Paper",
+			filters={"approval_status": "Submitted for Approval"},
+			fields=[
+				"name",
+				"title",
+				"course",
+				"batch",
+				"class_level",
+				"subject",
+				"owner",
+				"created_by_teacher",
+				"total_marks",
+				"modified",
+				"creation",
+				"rejection_reason",
+			],
+			order_by="modified desc",
+		)
+		for p in papers:
+			course_title = (
+				courses_map.get(p.course)
+				or (frappe.db.get_value("LMS Course", p.course, "title") if p.course else None)
+				or p.course
+			)
+			batch_title = (
+				frappe.db.get_value("LMS Batch", p.batch, "title") if p.batch else None
+			)
+			display_title = p.title or f"{p.class_level} {p.subject} Examination"
+			items.append({
+				"key": f"question_paper:{p.name}",
+				"doctype": "AI Question Paper",
+				"name": p.name,
+				"title": display_title,
+				"content_type": "Question Paper",
+				"course": p.course,
+				"course_title": course_title,
+				"batch": p.batch,
+				"batch_title": batch_title,
+				"class_level": p.class_level,
+				"subject": p.subject,
+				"total_marks": p.total_marks,
+				"owner": p.created_by_teacher or p.owner,
+				"modified": str(p.modified),
+				"creation": str(p.creation),
+				"rejection_reason": p.rejection_reason,
+			})
 
 	return items
 

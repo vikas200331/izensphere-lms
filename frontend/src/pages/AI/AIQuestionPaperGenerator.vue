@@ -404,6 +404,23 @@
 
 			<!-- VIEW 2: PREVIEW & VALIDATION -->
 			<div v-else-if="activeView === 'preview' && generatedPaper" class="space-y-6">
+				<!-- Changes Requested by Principal Banner -->
+				<div
+					v-if="generatedPaper.approval_status === 'Rejected'"
+					class="rounded-xl border border-red-300 bg-red-50 p-4 text-xs text-red-900 space-y-1.5 shadow-sm"
+				>
+					<div class="flex items-center gap-2 font-bold text-sm text-red-800">
+						<span class="lucide-alert-octagon size-4 text-red-600"></span>
+						{{ __('Changes Requested by Principal') }}
+					</div>
+					<p v-if="generatedPaper.rejection_reason" class="text-red-900 ps-6 text-xs font-semibold">
+						"{{ generatedPaper.rejection_reason }}"
+					</p>
+					<p class="text-red-700 ps-6 text-[11px]">
+						{{ __('Please edit the paper content, re-validate marks, and click Resubmit for Approval.') }}
+					</p>
+				</div>
+
 				<!-- Validation Status Banner -->
 				<div
 					v-if="generatedPaper.validation"
@@ -462,7 +479,7 @@
 						<!-- Status Indicator Badge -->
 						<Badge
 							v-if="generatedPaper?.approval_status"
-							:theme="generatedPaper.approval_status === 'Published' ? 'green' : (generatedPaper.approval_status === 'Principal Approved' ? 'blue' : (generatedPaper.approval_status === 'Submitted for Approval' ? 'orange' : 'gray'))"
+							:theme="generatedPaper.approval_status === 'Published' ? 'green' : (generatedPaper.approval_status === 'Principal Approved' ? 'blue' : (generatedPaper.approval_status === 'Submitted for Approval' ? 'orange' : (generatedPaper.approval_status === 'Rejected' ? 'red' : 'gray')))"
 							variant="subtle"
 							size="md"
 							class="font-semibold"
@@ -493,11 +510,11 @@
 							{{ isEditMode ? __('Save Changes') : __('Save as Draft') }}
 						</Button>
 
-						<!-- Submit for Approval (Shown when in Draft; disabled when already Submitted; hidden when Published/Principal Approved) -->
+						<!-- Submit for Approval (Shown when in Draft or Rejected; disabled when already Submitted; hidden when Published/Principal Approved) -->
 						<Button
 							v-if="generatedPaper?.approval_status !== 'Published' && generatedPaper?.approval_status !== 'Principal Approved'"
 							variant="subtle"
-							theme="orange"
+							:theme="generatedPaper?.approval_status === 'Rejected' ? 'red' : 'orange'"
 							size="sm"
 							:disabled="generatedPaper?.approval_status === 'Submitted for Approval'"
 							:loading="saving"
@@ -505,8 +522,9 @@
 						>
 							<template #prefix>
 								<span v-if="generatedPaper?.approval_status === 'Submitted for Approval'" class="lucide-check size-3.5 text-orange-600"></span>
+								<span v-else-if="generatedPaper?.approval_status === 'Rejected'" class="lucide-rotate-cw size-3.5 text-red-600"></span>
 							</template>
-							{{ generatedPaper?.approval_status === 'Submitted for Approval' ? __('Submitted for Approval') : __('Submit for Approval') }}
+							{{ generatedPaper?.approval_status === 'Submitted for Approval' ? __('Submitted for Approval') : (generatedPaper?.approval_status === 'Rejected' ? __('Resubmit for Approval') : __('Submit for Approval')) }}
 						</Button>
 
 						<!-- Approve & Publish: Disabled when already Published; Active otherwise -->
@@ -1088,7 +1106,7 @@
 								<h3 class="font-bold text-ink-gray-9 text-sm line-clamp-1 mt-0.5">{{ p.title }}</h3>
 							</div>
 							<Badge
-								:theme="p.approval_status === 'Published' ? 'green' : (p.approval_status === 'Principal Approved' ? 'blue' : (p.approval_status === 'Submitted for Approval' ? 'orange' : 'gray'))"
+								:theme="p.approval_status === 'Published' ? 'green' : (p.approval_status === 'Principal Approved' ? 'blue' : (p.approval_status === 'Submitted for Approval' ? 'orange' : (p.approval_status === 'Rejected' ? 'red' : 'gray')))"
 								variant="subtle"
 								size="sm"
 							>

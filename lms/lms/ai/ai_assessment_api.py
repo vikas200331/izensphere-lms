@@ -426,6 +426,7 @@ def api_get_question_paper(name: str):
 		"instructions": doc.instructions,
 		"generation_mode": doc.generation_mode,
 		"approval_status": doc.approval_status,
+		"rejection_reason": doc.rejection_reason,
 		"sections": sections,
 		"created_by_teacher": doc.created_by_teacher,
 		"approved_by": doc.approved_by,
