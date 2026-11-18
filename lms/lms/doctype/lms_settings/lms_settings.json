@@ -96,6 +96,11 @@
 		"openai_api_key",
 		"openai_model",
 		"openai_base_url",
+		"claude_base_url",
+		"claude_api_key",
+		"claude_model",
+		"claude_max_tokens",
+		"claude_temperature",
 		"ai_temperature",
 		"ai_max_tokens",
 		"column_break_ai_set_1",
@@ -578,7 +583,7 @@
 			"fieldname": "ai_provider",
 			"fieldtype": "Select",
 			"label": "AI Provider",
-			"options": "Ollama\nOpenAI"
+			"options": "Ollama\nOpenAI\nClaude"
 		},
 		{
 			"default": "http://localhost:11434",
@@ -611,6 +616,37 @@
 			"fieldname": "openai_base_url",
 			"fieldtype": "Data",
 			"label": "OpenAI Base URL"
+		},
+		{
+			"default": "https://api.anthropic.com",
+			"description": "Default: https://api.anthropic.com",
+			"fieldname": "claude_base_url",
+			"fieldtype": "Data",
+			"label": "Claude API Base URL"
+		},
+		{
+			"fieldname": "claude_api_key",
+			"fieldtype": "Password",
+			"label": "Claude API Key"
+		},
+		{
+			"default": "claude-sonnet-4-6",
+			"description": "e.g. claude-sonnet-4-6, claude-haiku-4-5, claude-opus-4-6",
+			"fieldname": "claude_model",
+			"fieldtype": "Data",
+			"label": "Claude Model Name"
+		},
+		{
+			"default": "4096",
+			"fieldname": "claude_max_tokens",
+			"fieldtype": "Int",
+			"label": "Claude Max Tokens"
+		},
+		{
+			"default": "0.7",
+			"fieldname": "claude_temperature",
+			"fieldtype": "Float",
+			"label": "Claude Temperature"
 		},
 		{
 			"default": "0.7",
@@ -657,7 +693,7 @@
 	"index_web_pages_for_search": 1,
 	"issingle": 1,
 	"links": [],
-	"modified": "2026-06-05 20:49:15.000000",
+	"modified": "2026-11-18 06:47:00.000000",
 	"modified_by": "Administrator",
 	"module": "LMS",
 	"name": "LMS Settings",

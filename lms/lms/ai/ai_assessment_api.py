@@ -15,7 +15,15 @@ from lms.lms.ai.content_extractor import (
 	extract_lesson_content,
 	get_content_stats,
 )
-from lms.lms.ai.ai_service import get_ai_settings, test_ai_connection
+from lms.lms.ai.ai_service import (
+	CLAUDE_MODEL_OPTIONS,
+	DEFAULT_CLAUDE_BASE_URL,
+	DEFAULT_CLAUDE_MODEL,
+	SUPPORTED_PROVIDERS,
+	get_ai_settings,
+	normalize_provider,
+	test_ai_connection,
+)
 from lms.lms.ai.openai_service import get_default_model, get_openai_api_key
 from lms.lms.ai.pdf_generator import generate_paper_pdf_file, get_paper_html
 from lms.lms.ai.question_bank import (
@@ -56,23 +64,53 @@ def _check_principal_permission():
 		frappe.throw(_("Access denied: Only Principal or System Manager can perform this action."), frappe.PermissionError)
 
 
+def _check_system_manager_permission():
+	"""Ensures caller is System Manager or Administrator."""
+	user = frappe.session.user
+	if not user or user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.AuthenticationError)
+	roles = frappe.get_roles(user)
+	if not ("System Manager" in roles or user == "Administrator"):
+		frappe.throw(
+			_("Access denied: Only System Managers can access or modify AI Provider Settings."),
+			frappe.PermissionError,
+		)
+
+
 @frappe.whitelist()
 def api_get_ai_config():
-	"""Returns public AI configuration (provider, model, endpoints, status) WITHOUT leaking the API key."""
-	_check_teacher_or_admin_permission()
+	"""Returns AI configuration (provider, model, endpoints, status) WITHOUT leaking any API keys."""
+	_check_system_manager_permission()
 	cfg = get_ai_settings()
+	active_provider = cfg.get("provider", "Ollama")
+	if active_provider == "OpenAI":
+		active_model = cfg.get("openai_model", "gpt-4o-mini")
+		has_active_key = bool(cfg.get("openai_api_key"))
+	elif active_provider == "Claude":
+		active_model = cfg.get("claude_model", DEFAULT_CLAUDE_MODEL)
+		has_active_key = bool(cfg.get("claude_api_key"))
+	else:
+		active_model = cfg.get("ollama_model", "llama3.2")
+		has_active_key = False
+
 	return {
 		"enable_ai_assessment": cfg.get("enable_ai_assessment", 1),
-		"provider": cfg.get("provider", "Ollama"),
+		"provider": active_provider,
 		"ollama_base_url": cfg.get("ollama_base_url", "http://localhost:11434"),
 		"ollama_model": cfg.get("ollama_model", "llama3.2"),
 		"openai_model": cfg.get("openai_model", "gpt-4o-mini"),
 		"openai_base_url": cfg.get("openai_base_url", "https://api.openai.com/v1"),
 		"has_openai_key": bool(cfg.get("openai_api_key")),
-		"has_api_key": bool(cfg.get("openai_api_key")),
+		"claude_base_url": cfg.get("claude_base_url", DEFAULT_CLAUDE_BASE_URL),
+		"claude_model": cfg.get("claude_model", DEFAULT_CLAUDE_MODEL),
+		"claude_max_tokens": cfg.get("claude_max_tokens", 4096),
+		"claude_temperature": cfg.get("claude_temperature", 0.7),
+		"has_claude_key": bool(cfg.get("claude_api_key")),
+		"claude_model_options": CLAUDE_MODEL_OPTIONS,
+		"has_api_key": has_active_key,
 		"temperature": cfg.get("temperature", 0.7),
 		"max_tokens": cfg.get("max_tokens", 4000),
-		"model": cfg.get("openai_model" if cfg.get("provider") == "OpenAI" else "ollama_model"),
+		"model": active_model,
 		"school_name": cfg.get("school_name", "Izensphere International School"),
 		"school_logo": frappe.db.get_single_value("LMS Settings", "school_logo"),
 		"default_mode": cfg.get("default_generation_mode", "Chapter-Based"),
@@ -81,17 +119,15 @@ def api_get_ai_config():
 
 @frappe.whitelist()
 def api_test_ai_connection(provider: str | None = None, base_url: str | None = None, model: str | None = None, api_key: str | None = None):
-	"""Test connectivity and model readiness for Ollama or OpenAI."""
-	_check_teacher_or_admin_permission()
+	"""Test connectivity and model readiness for Ollama, OpenAI, or Claude (System Manager only)."""
+	_check_system_manager_permission()
 	return test_ai_connection(provider=provider, base_url=base_url, model=model, api_key=api_key)
 
 
 @frappe.whitelist()
 def api_save_ai_settings(settings: str | dict | None = None):
 	"""Save AI Provider configuration into LMS Settings (System Manager / Administrator only)."""
-	user = frappe.session.user
-	if not ("System Manager" in frappe.get_roles(user) or user == "Administrator"):
-		frappe.throw(_("Only System Managers can update AI settings."), frappe.PermissionError)
+	_check_system_manager_permission()
 
 	if isinstance(settings, str):
 		settings = json.loads(settings)
@@ -103,27 +139,51 @@ def api_save_ai_settings(settings: str | dict | None = None):
 	if "enable_ai_assessment" in settings:
 		doc.enable_ai_assessment = cint(settings["enable_ai_assessment"])
 	if "provider" in settings:
-		doc.ai_provider = settings["provider"]
-	if "ollama_base_url" in settings:
-		doc.ollama_base_url = settings["ollama_base_url"].strip()
-	if "ollama_model" in settings:
-		doc.ollama_model = settings["ollama_model"].strip()
-	if "openai_model" in settings:
-		doc.openai_model = settings["openai_model"].strip()
-	if "openai_base_url" in settings:
-		doc.openai_base_url = settings["openai_base_url"].strip()
-	if "temperature" in settings:
+		normalized_provider = normalize_provider(settings["provider"])
+		if normalized_provider not in SUPPORTED_PROVIDERS:
+			frappe.throw(
+				_("Unsupported AI provider: {0}. Allowed providers: {1}").format(
+					settings["provider"], ", ".join(SUPPORTED_PROVIDERS)
+				),
+				frappe.ValidationError,
+			)
+		doc.ai_provider = normalized_provider
+	if "ollama_base_url" in settings and settings["ollama_base_url"] is not None:
+		doc.ollama_base_url = str(settings["ollama_base_url"]).strip()
+	if "ollama_model" in settings and settings["ollama_model"] is not None:
+		doc.ollama_model = str(settings["ollama_model"]).strip()
+	if "openai_model" in settings and settings["openai_model"] is not None:
+		doc.openai_model = str(settings["openai_model"]).strip()
+	if "openai_base_url" in settings and settings["openai_base_url"] is not None:
+		doc.openai_base_url = str(settings["openai_base_url"]).strip()
+	if "claude_base_url" in settings and settings["claude_base_url"] is not None:
+		doc.claude_base_url = str(settings["claude_base_url"]).strip() or DEFAULT_CLAUDE_BASE_URL
+	if "claude_model" in settings and settings["claude_model"] is not None:
+		doc.claude_model = str(settings["claude_model"]).strip() or DEFAULT_CLAUDE_MODEL
+	if "claude_max_tokens" in settings and settings["claude_max_tokens"] is not None:
+		c_max = cint(settings["claude_max_tokens"])
+		if c_max < 1:
+			frappe.throw(_("Claude Max Tokens must be greater than 0."), frappe.ValidationError)
+		doc.claude_max_tokens = c_max
+	if "claude_temperature" in settings and settings["claude_temperature"] is not None:
+		c_temp = flt(settings["claude_temperature"])
+		if c_temp < 0.0 or c_temp > 1.0:
+			frappe.throw(_("Claude Temperature must be between 0.0 and 1.0."), frappe.ValidationError)
+		doc.claude_temperature = c_temp
+	if "temperature" in settings and settings["temperature"] is not None:
 		doc.ai_temperature = flt(settings["temperature"])
-	if "max_tokens" in settings:
+	if "max_tokens" in settings and settings["max_tokens"] is not None:
 		doc.ai_max_tokens = cint(settings["max_tokens"])
-	if "school_name" in settings:
-		doc.school_name = settings["school_name"].strip()
-	if "default_mode" in settings:
-		doc.default_generation_mode = settings["default_mode"].strip()
+	if "school_name" in settings and settings["school_name"] is not None:
+		doc.school_name = str(settings["school_name"]).strip()
+	if "default_mode" in settings and settings["default_mode"] is not None:
+		doc.default_generation_mode = str(settings["default_mode"]).strip()
 
-	# Save password field if provided
-	if settings.get("openai_api_key"):
-		doc.openai_api_key = settings["openai_api_key"].strip()
+	# Save password fields only if non-empty values are explicitly provided (preserves other provider keys)
+	if settings.get("openai_api_key") and str(settings["openai_api_key"]).strip():
+		doc.openai_api_key = str(settings["openai_api_key"]).strip()
+	if settings.get("claude_api_key") and str(settings["claude_api_key"]).strip():
+		doc.claude_api_key = str(settings["claude_api_key"]).strip()
 
 	doc.save(ignore_permissions=True)
 	frappe.db.commit()

@@ -711,7 +711,14 @@ const getSidebarItems = (forMobile = false) => {
 					icon: 'Sliders',
 					to: 'AIProviderSettings',
 					condition: () => {
-						return !forMobile && isAdmin()
+						const { userResource } = usersStore()
+						return (
+							!forMobile &&
+							Boolean(
+								userResource?.data?.is_system_manager ||
+									userResource?.data?.name === 'Administrator'
+							)
+						)
 					},
 					activeFor: ['AIProviderSettings'],
 				},

@@ -11,14 +11,216 @@ from frappe import _
 from frappe.utils import cint, flt, now_datetime
 from lms.lms.ai.curriculum_paper_builder import build_curriculum_question_paper_sections
 
-# Model Pricing per 1M tokens (USD) for OpenAI models
+# Anthropic Messages API Configuration
+ANTHROPIC_API_VERSION = "2023-06-01"
+DEFAULT_CLAUDE_BASE_URL = "https://api.anthropic.com"
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-6"
+
+CLAUDE_MODEL_OPTIONS = [
+	{"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (Recommended - Balanced)"},
+	{"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5 (Fast & Cost-Effective)"},
+	{"id": "claude-opus-4-6", "label": "Claude Opus 4.6 (Most Capable)"},
+	{"id": "claude-sonnet-4-5-20250929", "label": "Claude Sonnet 4.5 (2025-09-29)"},
+	{"id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5 (2025-10-01)"},
+]
+
+SUPPORTED_PROVIDERS = ("Ollama", "OpenAI", "Claude")
+
+# Model Pricing per 1M tokens (USD) for Cloud AI models
 MODEL_PRICING = {
+	# OpenAI
 	"gpt-4o-mini": {"prompt": 0.15, "completion": 0.60},
 	"gpt-4o": {"prompt": 2.50, "completion": 10.00},
 	"gpt-4-turbo": {"prompt": 10.00, "completion": 30.00},
 	"o3-mini": {"prompt": 1.10, "completion": 4.40},
 	"o1": {"prompt": 15.00, "completion": 60.00},
+	# Anthropic Claude
+	"claude-sonnet-4-6": {"prompt": 3.00, "completion": 15.00},
+	"claude-sonnet-4-5": {"prompt": 3.00, "completion": 15.00},
+	"claude-haiku-4-5": {"prompt": 1.00, "completion": 5.00},
+	"claude-opus-4-6": {"prompt": 15.00, "completion": 75.00},
+	"claude-3-7-sonnet": {"prompt": 3.00, "completion": 15.00},
+	"claude-3-5-haiku": {"prompt": 0.80, "completion": 4.00},
 }
+
+
+def normalize_provider(provider: str | None) -> str:
+	"""Normalize provider names and display labels to canonical identifiers."""
+	if not provider:
+		return ""
+	val = str(provider).strip()
+	lower = val.lower()
+	if lower in ("ollama", "ollama (free local ai)", "ollama – free local ai"):
+		return "Ollama"
+	if lower in ("openai", "openai api", "openai – cloud ai", "openai api (optional)"):
+		return "OpenAI"
+	if lower in (
+		"claude",
+		"anthropic",
+		"claude ai",
+		"claude ai (anthropic)",
+		"claude – anthropic cloud ai",
+		"claude ai (anthropic) – cloud ai",
+	):
+		return "Claude"
+	return val
+
+
+def _normalize_claude_base_url(base_url: str | None) -> str:
+	"""Normalize Anthropic base URL so appending /v1/messages never duplicates path segments."""
+	url = (base_url or DEFAULT_CLAUDE_BASE_URL).strip().rstrip("/")
+	for suffix in ("/v1/messages", "/v1"):
+		if url.endswith(suffix):
+			url = url[: -len(suffix)].rstrip("/")
+	return url or DEFAULT_CLAUDE_BASE_URL
+
+
+def _redact_secrets(text: str | None, secrets: list[str] | None = None) -> str | None:
+	"""Ensure API keys and credentials are never leaked into logs or responses."""
+	if not text:
+		return text
+	redacted = str(text)
+	for secret in secrets or []:
+		if secret and len(secret) >= 8:
+			redacted = redacted.replace(secret, "[REDACTED]")
+	redacted = re.sub(r"sk-ant-[A-Za-z0-9\-_]+", "[REDACTED]", redacted)
+	redacted = re.sub(r"sk-(?:proj-)?[A-Za-z0-9\-_]{20,}", "[REDACTED]", redacted)
+	return redacted
+
+
+def _parse_ai_json_response(raw_text: str, generation_type: str = "") -> dict:
+	"""Parse JSON output from any AI provider, stripping optional markdown fences."""
+	cleaned = (raw_text or "").strip()
+	if cleaned.startswith("```json"):
+		cleaned = cleaned[7:]
+	elif cleaned.startswith("```"):
+		cleaned = cleaned[3:]
+	if cleaned.endswith("```"):
+		cleaned = cleaned[:-3]
+	cleaned = cleaned.strip()
+
+	try:
+		parsed = json.loads(cleaned)
+		if isinstance(parsed, dict):
+			return parsed
+	except json.JSONDecodeError:
+		pass
+
+	# Fallback: extract outermost JSON object if the model added surrounding prose
+	start_idx = cleaned.find("{")
+	end_idx = cleaned.rfind("}")
+	if start_idx != -1 and end_idx > start_idx:
+		try:
+			parsed = json.loads(cleaned[start_idx : end_idx + 1])
+			if isinstance(parsed, dict):
+				return parsed
+		except json.JSONDecodeError:
+			pass
+
+	if generation_type in ("AI Tutor Explanation", "Assessment Analytics") and cleaned:
+		return {"status": "success", "explanation": cleaned}
+
+	raise json.JSONDecodeError("AI response did not contain a valid JSON object", cleaned, 0)
+
+
+def _classify_anthropic_error(status_code: int, resp_text: str, model_name: str = "") -> tuple[str, str]:
+	"""Translate Anthropic HTTP error responses into clear, actionable messages."""
+	err_type_raw = ""
+	err_msg = ""
+	try:
+		body = json.loads(resp_text or "{}")
+		if isinstance(body.get("error"), dict):
+			err_type_raw = str(body["error"].get("type") or "")
+			err_msg = str(body["error"].get("message") or "")
+		elif body.get("message"):
+			err_msg = str(body.get("message"))
+	except Exception:
+		err_msg = (resp_text or "").strip()[:300]
+
+	err_lower = err_msg.lower()
+
+	if status_code == 401 or err_type_raw == "authentication_error":
+		return (
+			"invalid_api_key",
+			"Invalid Claude API key. Please verify your Anthropic API key in AI Provider Settings.",
+		)
+	if status_code == 403 or err_type_raw == "permission_error":
+		return (
+			"permission_denied",
+			"Claude API access denied. Your API key does not have permission for this resource.",
+		)
+	if status_code == 404 or err_type_raw == "not_found_error":
+		return (
+			"model_unavailable",
+			f"Claude model '{model_name}' was not found or is unavailable for your Anthropic account.",
+		)
+	if status_code == 429 or err_type_raw == "rate_limit_error":
+		return (
+			"rate_limit",
+			"Claude API rate limit exceeded. Please wait a moment and try again.",
+		)
+	if status_code == 529 or err_type_raw == "overloaded_error":
+		return (
+			"overloaded",
+			"Anthropic API is temporarily overloaded. Please retry shortly.",
+		)
+	if status_code == 400 or err_type_raw == "invalid_request_error":
+		if any(k in err_lower for k in ("credit balance", "insufficient", "billing", "quota")):
+			return (
+				"insufficient_credits",
+				"Insufficient Anthropic API credits. Please add credits to your Anthropic billing account.",
+			)
+		if "model" in err_lower:
+			return (
+				"model_unavailable",
+				f"Invalid or unavailable Claude model '{model_name}': {err_msg}",
+			)
+		return (
+			"invalid_request",
+			f"Claude API request error: {err_msg or 'Invalid request payload.'}",
+		)
+	if status_code >= 500:
+		return (
+			"server_error",
+			f"Anthropic API server error (HTTP {status_code}). Please try again later.",
+		)
+
+	return (
+		"api_error",
+		f"Claude API returned HTTP {status_code}: {err_msg or 'Unexpected error.'}",
+	)
+
+
+def _anthropic_post_with_retries(
+	url: str,
+	headers: dict,
+	payload: dict,
+	timeout: float = 90.0,
+	max_retries: int = 2,
+) -> requests.Response:
+	"""Execute an Anthropic HTTP POST request with retries for transient failures."""
+	last_exc = None
+	for attempt in range(max_retries + 1):
+		try:
+			resp = requests.post(url, headers=headers, json=payload, timeout=timeout)
+			if resp.status_code in (429, 500, 502, 503, 504, 529) and attempt < max_retries:
+				retry_after = resp.headers.get("retry-after")
+				try:
+					wait_s = min(float(retry_after), 5.0) if retry_after else float(2**attempt)
+				except (TypeError, ValueError):
+					wait_s = float(2**attempt)
+				time.sleep(max(0.5, wait_s))
+				continue
+			return resp
+		except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+			last_exc = exc
+			if attempt < max_retries:
+				time.sleep(float(2**attempt))
+				continue
+			raise
+	if last_exc:
+		raise last_exc
+	raise requests.exceptions.RequestException("Anthropic API request failed after retries.")
 
 
 def get_ai_settings() -> dict:
@@ -31,6 +233,11 @@ def get_ai_settings() -> dict:
 		"openai_api_key": None,
 		"openai_model": "gpt-4o-mini",
 		"openai_base_url": "https://api.openai.com/v1",
+		"claude_base_url": DEFAULT_CLAUDE_BASE_URL,
+		"claude_api_key": None,
+		"claude_model": DEFAULT_CLAUDE_MODEL,
+		"claude_max_tokens": 4096,
+		"claude_temperature": 0.7,
 		"temperature": 0.7,
 		"max_tokens": 4000,
 		"school_name": "Izensphere International School",
@@ -42,7 +249,7 @@ def get_ai_settings() -> dict:
 		if doc.get("enable_ai_assessment") is not None:
 			settings["enable_ai_assessment"] = cint(doc.enable_ai_assessment)
 		if doc.get("ai_provider"):
-			settings["provider"] = doc.ai_provider
+			settings["provider"] = normalize_provider(doc.ai_provider) or "Ollama"
 		if doc.get("ollama_base_url"):
 			settings["ollama_base_url"] = doc.ollama_base_url.strip().rstrip("/")
 		if doc.get("ollama_model"):
@@ -51,7 +258,15 @@ def get_ai_settings() -> dict:
 			settings["openai_model"] = doc.openai_model.strip()
 		if doc.get("openai_base_url"):
 			settings["openai_base_url"] = doc.openai_base_url.strip().rstrip("/")
-		if doc.get("ai_temperature"):
+		if doc.get("claude_base_url"):
+			settings["claude_base_url"] = _normalize_claude_base_url(doc.claude_base_url)
+		if doc.get("claude_model"):
+			settings["claude_model"] = doc.claude_model.strip()
+		if doc.get("claude_max_tokens"):
+			settings["claude_max_tokens"] = cint(doc.claude_max_tokens)
+		if doc.get("claude_temperature") is not None and str(doc.get("claude_temperature")).strip() != "":
+			settings["claude_temperature"] = flt(doc.claude_temperature)
+		if doc.get("ai_temperature") is not None and str(doc.get("ai_temperature")).strip() != "":
 			settings["temperature"] = flt(doc.ai_temperature)
 		if doc.get("ai_max_tokens"):
 			settings["max_tokens"] = cint(doc.ai_max_tokens)
@@ -62,8 +277,9 @@ def get_ai_settings() -> dict:
 	except Exception:
 		pass
 
-	# Secure API Key retrieval for OpenAI
+	# Secure API Key retrieval for cloud providers
 	settings["openai_api_key"] = get_openai_api_key()
+	settings["claude_api_key"] = get_claude_api_key()
 
 	return settings
 
@@ -86,8 +302,32 @@ def get_openai_api_key() -> str | None:
 
 	try:
 		key = frappe.db.get_single_value("LMS Settings", "openai_api_key")
-		if key:
+		if key and set(str(key).strip()) != {"*"}:
 			return key
+	except Exception:
+		pass
+
+	return None
+
+
+def get_claude_api_key() -> str | None:
+	"""Retrieve Claude (Anthropic) API key securely from site config, environment, or LMS Settings."""
+	if frappe.conf:
+		if frappe.conf.get("claude_api_key"):
+			return frappe.conf.get("claude_api_key")
+		if frappe.conf.get("anthropic_api_key"):
+			return frappe.conf.get("anthropic_api_key")
+
+	if os.environ.get("ANTHROPIC_API_KEY"):
+		return os.environ.get("ANTHROPIC_API_KEY")
+	if os.environ.get("CLAUDE_API_KEY"):
+		return os.environ.get("CLAUDE_API_KEY")
+
+	try:
+		from frappe.utils.password import get_decrypted_password
+		decrypted = get_decrypted_password("LMS Settings", "LMS Settings", "claude_api_key", raise_exception=False)
+		if decrypted and set(str(decrypted).strip()) != {"*"}:
+			return decrypted
 	except Exception:
 		pass
 
@@ -96,9 +336,33 @@ def get_openai_api_key() -> str | None:
 
 def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
 	"""Calculates estimated API cost for paid models (Ollama is always 0.00)."""
-	if not model or "gpt" not in model.lower() and "o3" not in model.lower() and "o1" not in model.lower():
+	if not model:
 		return 0.0
-	pricing = MODEL_PRICING.get(model, MODEL_PRICING["gpt-4o-mini"])
+	model_lower = model.lower()
+	if model_lower.startswith("ollama:"):
+		return 0.0
+
+	pricing = MODEL_PRICING.get(model) or MODEL_PRICING.get(model_lower)
+	if not pricing:
+		# Prefix matching for snapshot/versioned model IDs
+		for key, value in MODEL_PRICING.items():
+			if model_lower.startswith(key):
+				pricing = value
+				break
+
+	if not pricing:
+		if "claude" in model_lower:
+			if "opus" in model_lower:
+				pricing = MODEL_PRICING["claude-opus-4-6"]
+			elif "haiku" in model_lower:
+				pricing = MODEL_PRICING["claude-haiku-4-5"]
+			else:
+				pricing = MODEL_PRICING["claude-sonnet-4-6"]
+		elif "gpt" in model_lower or "o3" in model_lower or "o1" in model_lower:
+			pricing = MODEL_PRICING["gpt-4o-mini"]
+		else:
+			return 0.0
+
 	prompt_cost = (prompt_tokens / 1_000_000.0) * pricing["prompt"]
 	comp_cost = (completion_tokens / 1_000_000.0) * pricing["completion"]
 	return round(prompt_cost + comp_cost, 6)
@@ -143,9 +407,9 @@ def log_generation(
 				"lesson": lesson,
 				"reference_doctype": reference_doctype,
 				"reference_name": reference_name,
-				"error_message": error_message,
-				"request_payload": request_payload[:60000] if request_payload else None,
-				"response_payload": response_payload[:60000] if response_payload else None,
+				"error_message": _redact_secrets(error_message) if error_message else None,
+				"request_payload": _redact_secrets(request_payload[:60000]) if request_payload else None,
+				"response_payload": _redact_secrets(response_payload[:60000]) if response_payload else None,
 			}
 		)
 		log.insert(ignore_permissions=True)
@@ -156,6 +420,216 @@ def log_generation(
 		return None
 
 
+def _test_ollama_connection(
+	cfg: dict,
+	base_url: str | None = None,
+	model: str | None = None,
+	api_key: str | None = None,
+) -> dict:
+	ollama_url = (base_url or cfg.get("ollama_base_url") or "http://localhost:11434").rstrip("/")
+	ollama_model = model or cfg.get("ollama_model") or "llama3.2"
+
+	try:
+		# Query Ollama tags endpoint
+		resp = requests.get(f"{ollama_url}/api/tags", timeout=5.0)
+		if resp.status_code == 200:
+			data = resp.json()
+			available_models = [m.get("name") for m in data.get("models", [])]
+
+			# Check if requested model or matching prefix exists
+			model_found = any(
+				ollama_model in m or m.startswith(ollama_model) for m in available_models
+			)
+
+			return {
+				"success": True,
+				"provider": "Ollama",
+				"base_url": ollama_url,
+				"active_model": ollama_model,
+				"model_found": model_found,
+				"models": available_models,
+				"message": (
+					f"Connected successfully to Ollama at {ollama_url}. "
+					+ (
+						f"Model '{ollama_model}' is installed and ready."
+						if model_found
+						else f"Available models: {', '.join(available_models) if available_models else 'None'}. You may pull '{ollama_model}' via 'ollama pull {ollama_model}'."
+					)
+				),
+			}
+		else:
+			return {
+				"success": False,
+				"provider": "Ollama",
+				"base_url": ollama_url,
+				"message": f"Ollama returned HTTP status {resp.status_code}: {resp.text}",
+				"models": [],
+			}
+	except requests.exceptions.RequestException as e:
+		return {
+			"success": False,
+			"provider": "Ollama",
+			"base_url": ollama_url,
+			"message": f"Could not connect to Ollama at {ollama_url}. Please ensure Ollama is installed and running (`ollama serve`). ({str(e)})",
+			"models": [],
+		}
+
+
+def _test_openai_connection(
+	cfg: dict,
+	base_url: str | None = None,
+	model: str | None = None,
+	api_key: str | None = None,
+) -> dict:
+	openai_key = api_key if api_key is not None and api_key != "" else (cfg.get("openai_api_key") if api_key is None else "")
+	openai_model = model or cfg.get("openai_model") or "gpt-4o-mini"
+	openai_url = (base_url or cfg.get("openai_base_url") or "https://api.openai.com/v1").rstrip("/")
+
+	if not openai_key:
+		return {
+			"success": False,
+			"provider": "OpenAI",
+			"message": "OpenAI API Key is missing. Please configure your API key in LMS Settings or site_config.json.",
+		}
+
+	try:
+		from openai import OpenAI
+		client = OpenAI(api_key=openai_key, base_url=openai_url, timeout=10.0)
+		# Fast ping to list models
+		client.models.list()
+		return {
+			"success": True,
+			"provider": "OpenAI",
+			"active_model": openai_model,
+			"message": f"Connected to OpenAI API successfully. Active model: {openai_model}",
+		}
+	except Exception as e:
+		return {
+			"success": False,
+			"provider": "OpenAI",
+			"message": _redact_secrets(f"OpenAI connection error: {str(e)}", [openai_key]),
+		}
+
+
+def _test_claude_connection(
+	cfg: dict,
+	base_url: str | None = None,
+	model: str | None = None,
+	api_key: str | None = None,
+) -> dict:
+	"""Verify Anthropic API key, connectivity, credits, and selected Claude model accessibility."""
+	claude_key = api_key if api_key is not None and api_key != "" else (cfg.get("claude_api_key") if api_key is None else "")
+	claude_model = (model or cfg.get("claude_model") or DEFAULT_CLAUDE_MODEL).strip()
+	claude_url = _normalize_claude_base_url(base_url or cfg.get("claude_base_url"))
+
+	if not claude_key:
+		return {
+			"success": False,
+			"provider": "Claude",
+			"base_url": claude_url,
+			"active_model": claude_model,
+			"error_type": "missing_api_key",
+			"message": "Claude API Key is missing. Please configure your Anthropic API key in AI Provider Settings.",
+		}
+
+	if not claude_model:
+		return {
+			"success": False,
+			"provider": "Claude",
+			"base_url": claude_url,
+			"error_type": "missing_model",
+			"message": "Claude Model Name is required. Please select or enter a valid Claude model ID.",
+		}
+
+	headers = {
+		"x-api-key": claude_key,
+		"anthropic-version": ANTHROPIC_API_VERSION,
+		"content-type": "application/json",
+	}
+	test_payload = {
+		"model": claude_model,
+		"max_tokens": 16,
+		"messages": [{"role": "user", "content": "Reply with OK."}],
+	}
+
+	try:
+		resp = requests.post(
+			f"{claude_url}/v1/messages",
+			headers=headers,
+			json=test_payload,
+			timeout=15.0,
+		)
+
+		if resp.status_code == 200:
+			# Optionally list models available to the account (best-effort, non-fatal)
+			available_models = []
+			try:
+				models_resp = requests.get(
+					f"{claude_url}/v1/models",
+					headers={
+						"x-api-key": claude_key,
+						"anthropic-version": ANTHROPIC_API_VERSION,
+					},
+					timeout=5.0,
+				)
+				if models_resp.status_code == 200:
+					mdata = models_resp.json()
+					available_models = [
+						m.get("id") for m in mdata.get("data", []) if isinstance(m, dict) and m.get("id")
+					]
+			except Exception:
+				pass
+
+			return {
+				"success": True,
+				"provider": "Claude",
+				"base_url": claude_url,
+				"active_model": claude_model,
+				"model_found": True,
+				"models": available_models,
+				"message": f"Connected to Claude AI (Anthropic) successfully. Model '{claude_model}' is accessible and ready.",
+			}
+
+		err_type, err_msg = _classify_anthropic_error(resp.status_code, resp.text, claude_model)
+		return {
+			"success": False,
+			"provider": "Claude",
+			"base_url": claude_url,
+			"active_model": claude_model,
+			"error_type": err_type,
+			"message": _redact_secrets(err_msg, [claude_key]),
+		}
+
+	except requests.exceptions.Timeout:
+		return {
+			"success": False,
+			"provider": "Claude",
+			"base_url": claude_url,
+			"active_model": claude_model,
+			"error_type": "timeout",
+			"message": f"Connection to Anthropic API ({claude_url}) timed out. Please verify network connectivity and try again.",
+		}
+	except requests.exceptions.RequestException as e:
+		return {
+			"success": False,
+			"provider": "Claude",
+			"base_url": claude_url,
+			"active_model": claude_model,
+			"error_type": "network_error",
+			"message": _redact_secrets(
+				f"Network error connecting to Anthropic API at {claude_url}: {str(e)}",
+				[claude_key],
+			),
+		}
+
+
+PROVIDER_TESTERS = {
+	"Ollama": _test_ollama_connection,
+	"OpenAI": _test_openai_connection,
+	"Claude": _test_claude_connection,
+}
+
+
 def test_ai_connection(
 	provider: str | None = None,
 	base_url: str | None = None,
@@ -164,88 +638,452 @@ def test_ai_connection(
 ) -> dict:
 	"""Test connectivity and model availability for the selected AI Provider."""
 	cfg = get_ai_settings()
-	target_provider = provider or cfg.get("provider") or "Ollama"
+	target_provider = normalize_provider(provider) or normalize_provider(cfg.get("provider")) or "Ollama"
 
-	if target_provider == "Ollama":
-		ollama_url = (base_url or cfg.get("ollama_base_url") or "http://localhost:11434").rstrip("/")
-		ollama_model = model or cfg.get("ollama_model") or "llama3.2"
-
-		try:
-			# Query Ollama tags endpoint
-			resp = requests.get(f"{ollama_url}/api/tags", timeout=5.0)
-			if resp.status_code == 200:
-				data = resp.json()
-				available_models = [m.get("name") for m in data.get("models", [])]
-				
-				# Check if requested model or matching prefix exists
-				model_found = any(
-					ollama_model in m or m.startswith(ollama_model) for m in available_models
-				)
-
-				return {
-					"success": True,
-					"provider": "Ollama",
-					"base_url": ollama_url,
-					"active_model": ollama_model,
-					"model_found": model_found,
-					"models": available_models,
-					"message": (
-						f"Connected successfully to Ollama at {ollama_url}. "
-						+ (f"Model '{ollama_model}' is installed and ready." if model_found else f"Available models: {', '.join(available_models) if available_models else 'None'}. You may pull '{ollama_model}' via 'ollama pull {ollama_model}'.")
-					),
-				}
-			else:
-				return {
-					"success": False,
-					"provider": "Ollama",
-					"base_url": ollama_url,
-					"message": f"Ollama returned HTTP status {resp.status_code}: {resp.text}",
-					"models": [],
-				}
-		except requests.exceptions.RequestException as e:
-			return {
-				"success": False,
-				"provider": "Ollama",
-				"base_url": ollama_url,
-				"message": f"Could not connect to Ollama at {ollama_url}. Please ensure Ollama is installed and running (`ollama serve`). ({str(e)})",
-				"models": [],
-			}
-
-	elif target_provider == "OpenAI":
-		openai_key = api_key or cfg.get("openai_api_key")
-		openai_model = model or cfg.get("openai_model") or "gpt-4o-mini"
-		openai_url = (base_url or cfg.get("openai_base_url") or "https://api.openai.com/v1").rstrip("/")
-
-		if not openai_key:
-			return {
-				"success": False,
-				"provider": "OpenAI",
-				"message": "OpenAI API Key is missing. Please configure your API key in LMS Settings or site_config.json.",
-			}
-
-		try:
-			from openai import OpenAI
-			client = OpenAI(api_key=openai_key, base_url=openai_url, timeout=10.0)
-			# Fast ping to list models
-			client.models.list()
-			return {
-				"success": True,
-				"provider": "OpenAI",
-				"active_model": openai_model,
-				"message": f"Connected to OpenAI API successfully. Active model: {openai_model}",
-			}
-		except Exception as e:
-			return {
-				"success": False,
-				"provider": "OpenAI",
-				"message": f"OpenAI connection error: {str(e)}",
-			}
+	tester = PROVIDER_TESTERS.get(target_provider)
+	if tester:
+		return tester(cfg, base_url=base_url, model=model, api_key=api_key)
 
 	return {
 		"success": False,
 		"provider": target_provider,
 		"message": f"Unsupported AI provider: {target_provider}",
 	}
+
+
+def _call_ollama_provider(
+	cfg: dict,
+	system_prompt: str,
+	user_prompt: str,
+	model: str | None = None,
+	temperature: float | None = None,
+	max_tokens: int | None = None,
+	generation_type: str = "Quiz",
+	mode: str = "Chapter-Based",
+	course: str | None = None,
+	chapter: str | None = None,
+	lesson: str | None = None,
+	batch: str | None = None,
+	reference_doctype: str | None = None,
+	reference_name: str | None = None,
+) -> dict:
+	"""Provider adapter: Ollama (Free Local AI)."""
+	temp = temperature if temperature is not None else cfg.get("temperature", 0.7)
+	tokens_limit = max_tokens or cfg.get("max_tokens", 4000)
+	ollama_url = cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
+	model_name = model or cfg.get("ollama_model", "llama3.2")
+
+	try:
+		payload = {
+			"model": model_name,
+			"messages": [
+				{"role": "system", "content": system_prompt},
+				{"role": "user", "content": user_prompt},
+			],
+			"format": "json",
+			"stream": False,
+			"options": {
+				"temperature": temp,
+				"num_predict": tokens_limit,
+			},
+		}
+
+		resp = requests.post(
+			f"{ollama_url}/api/chat",
+			json=payload,
+			timeout=120.0,
+		)
+
+		if resp.status_code == 200:
+			data = resp.json()
+			content_raw = data.get("message", {}).get("content", "").strip()
+			result = _parse_ai_json_response(content_raw, generation_type=generation_type)
+
+			prompt_tokens = data.get("prompt_eval_count", len(user_prompt.split()) * 2)
+			completion_tokens = data.get("eval_count", len(content_raw.split()) * 2)
+			total_tokens = prompt_tokens + completion_tokens
+
+			log_generation(
+				user=frappe.session.user,
+				generation_type=generation_type,
+				status="Success",
+				model=f"ollama:{model_name}",
+				mode=mode,
+				prompt_tokens=prompt_tokens,
+				completion_tokens=completion_tokens,
+				total_tokens=total_tokens,
+				estimated_cost=0.0,  # Free!
+				course=course,
+				chapter=chapter,
+				lesson=lesson,
+				reference_doctype=reference_doctype,
+				reference_name=reference_name,
+				request_payload=user_prompt[:5000],
+				response_payload=content_raw[:5000],
+			)
+
+			result["_usage"] = {
+				"provider": "Ollama",
+				"model": model_name,
+				"prompt_tokens": prompt_tokens,
+				"completion_tokens": completion_tokens,
+				"total_tokens": total_tokens,
+				"estimated_cost": 0.0,
+			}
+			return result
+
+		else:
+			frappe.logger("ai_assessment").warning(
+				f"Ollama returned HTTP {resp.status_code}: {resp.text}. Falling back to content-driven offline engine."
+			)
+
+	except Exception as e:
+		frappe.logger("ai_assessment").warning(
+			f"Ollama local API call failed ({e}). Falling back to content-driven offline engine."
+		)
+
+	# Graceful local fallback if Ollama is not yet started or model is missing
+	return fallback_offline_engine(
+		system_prompt=system_prompt,
+		user_prompt=user_prompt,
+		generation_type=generation_type,
+		mode=mode,
+		course=course,
+		chapter=chapter,
+		lesson=lesson,
+		batch=batch,
+		provider_info=f"Ollama ({model_name} offline fallback)",
+	)
+
+
+def _call_openai_provider(
+	cfg: dict,
+	system_prompt: str,
+	user_prompt: str,
+	model: str | None = None,
+	temperature: float | None = None,
+	max_tokens: int | None = None,
+	generation_type: str = "Quiz",
+	mode: str = "Chapter-Based",
+	course: str | None = None,
+	chapter: str | None = None,
+	lesson: str | None = None,
+	batch: str | None = None,
+	reference_doctype: str | None = None,
+	reference_name: str | None = None,
+) -> dict:
+	"""Provider adapter: OpenAI API (Cloud AI)."""
+	temp = temperature if temperature is not None else cfg.get("temperature", 0.7)
+	tokens_limit = max_tokens or cfg.get("max_tokens", 4000)
+	api_key = cfg.get("openai_api_key")
+	model_name = model or cfg.get("openai_model", "gpt-4o-mini")
+	base_url = cfg.get("openai_base_url", "https://api.openai.com/v1")
+
+	if not api_key:
+		frappe.logger("ai_assessment").warning(
+			"OpenAI API key not configured. Using high-fidelity content-driven offline engine."
+		)
+		return fallback_offline_engine(
+			system_prompt=system_prompt,
+			user_prompt=user_prompt,
+			generation_type=generation_type,
+			mode=mode,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+			batch=batch,
+			provider_info=f"OpenAI ({model_name} offline fallback)",
+		)
+
+	try:
+		from openai import OpenAI, RateLimitError
+
+		client = OpenAI(api_key=api_key, base_url=base_url, timeout=90.0)
+
+		messages = [
+			{"role": "system", "content": system_prompt},
+			{"role": "user", "content": user_prompt},
+		]
+
+		call_params = {
+			"model": model_name,
+			"messages": messages,
+			"response_format": {"type": "json_object"},
+		}
+		if "o1" not in model_name.lower() and "o3" not in model_name.lower():
+			call_params["temperature"] = temp
+			call_params["max_tokens"] = tokens_limit
+
+		response = client.chat.completions.create(**call_params)
+
+		raw_content = response.choices[0].message.content
+		result = _parse_ai_json_response(raw_content, generation_type=generation_type)
+
+		usage = response.usage
+		prompt_tokens = usage.prompt_tokens if usage else 0
+		completion_tokens = usage.completion_tokens if usage else 0
+		total_tokens = usage.total_tokens if usage else (prompt_tokens + completion_tokens)
+		cost = calculate_cost(model_name, prompt_tokens, completion_tokens)
+
+		log_generation(
+			user=frappe.session.user,
+			generation_type=generation_type,
+			status="Success",
+			model=model_name,
+			mode=mode,
+			prompt_tokens=prompt_tokens,
+			completion_tokens=completion_tokens,
+			total_tokens=total_tokens,
+			estimated_cost=cost,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
+			request_payload=user_prompt[:5000],
+			response_payload=raw_content[:5000],
+		)
+
+		result["_usage"] = {
+			"provider": "OpenAI",
+			"model": model_name,
+			"prompt_tokens": prompt_tokens,
+			"completion_tokens": completion_tokens,
+			"total_tokens": total_tokens,
+			"estimated_cost": cost,
+		}
+		return result
+
+	except RateLimitError as e:
+		msg = _redact_secrets(f"OpenAI Rate Limit Exceeded or Quota Exhausted: {e}", [api_key])
+		log_generation(
+			user=frappe.session.user,
+			generation_type=generation_type,
+			status="Failed",
+			model=model_name,
+			mode=mode,
+			error_message=msg,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+		)
+		frappe.throw(_(msg), frappe.ValidationError)
+
+	except Exception as e:
+		frappe.logger("ai_assessment").warning(
+			_redact_secrets(f"OpenAI call error: {e}. Falling back to offline engine.", [api_key])
+		)
+		return fallback_offline_engine(
+			system_prompt=system_prompt,
+			user_prompt=user_prompt,
+			generation_type=generation_type,
+			mode=mode,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+			batch=batch,
+			provider_info=f"OpenAI fallback ({model_name})",
+		)
+
+
+def _call_claude_provider(
+	cfg: dict,
+	system_prompt: str,
+	user_prompt: str,
+	model: str | None = None,
+	temperature: float | None = None,
+	max_tokens: int | None = None,
+	generation_type: str = "Quiz",
+	mode: str = "Chapter-Based",
+	course: str | None = None,
+	chapter: str | None = None,
+	lesson: str | None = None,
+	batch: str | None = None,
+	reference_doctype: str | None = None,
+	reference_name: str | None = None,
+) -> dict:
+	"""Provider adapter: Claude AI (Anthropic Messages API)."""
+	api_key = cfg.get("claude_api_key")
+	model_name = (model or cfg.get("claude_model") or DEFAULT_CLAUDE_MODEL).strip()
+	base_url = _normalize_claude_base_url(cfg.get("claude_base_url"))
+	temp = (
+		flt(temperature)
+		if temperature is not None
+		else flt(cfg.get("claude_temperature", cfg.get("temperature", 0.7)))
+	)
+	temp = max(0.0, min(1.0, temp))
+	tokens_limit = cint(max_tokens) or cint(cfg.get("claude_max_tokens")) or cint(cfg.get("max_tokens")) or 4096
+
+	if not api_key:
+		msg = "Claude API Key is not configured. Please configure your Anthropic API key in AI Provider Settings."
+		log_generation(
+			user=frappe.session.user,
+			generation_type=generation_type,
+			status="Failed",
+			model=model_name,
+			mode=mode,
+			error_message=msg,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
+		)
+		frappe.throw(_(msg), frappe.ValidationError)
+
+	# Ensure Claude outputs valid JSON matching the standardized LMS workflow schema
+	json_directive = (
+		"\n\nIMPORTANT OUTPUT FORMAT: Return ONLY a valid JSON object with no markdown code fences "
+		"or surrounding commentary. If no explicit JSON keys are specified above, wrap your full "
+		'response inside {"explanation": "<detailed response>"}.'
+	)
+	effective_system = f"{system_prompt.strip()}{json_directive}" if system_prompt else json_directive.strip()
+
+	headers = {
+		"x-api-key": api_key,
+		"anthropic-version": ANTHROPIC_API_VERSION,
+		"content-type": "application/json",
+	}
+	payload = {
+		"model": model_name,
+		"max_tokens": tokens_limit,
+		"system": effective_system,
+		"messages": [
+			{"role": "user", "content": user_prompt},
+		],
+		"temperature": temp,
+	}
+
+	try:
+		resp = _anthropic_post_with_retries(
+			url=f"{base_url}/v1/messages",
+			headers=headers,
+			payload=payload,
+			timeout=90.0,
+			max_retries=2,
+		)
+
+		if resp.status_code != 200:
+			_err_type, err_msg = _classify_anthropic_error(resp.status_code, resp.text, model_name)
+			safe_msg = _redact_secrets(err_msg, [api_key])
+			log_generation(
+				user=frappe.session.user,
+				generation_type=generation_type,
+				status="Failed",
+				model=model_name,
+				mode=mode,
+				error_message=safe_msg,
+				course=course,
+				chapter=chapter,
+				lesson=lesson,
+				reference_doctype=reference_doctype,
+				reference_name=reference_name,
+			)
+			frappe.throw(_(safe_msg), frappe.ValidationError)
+
+		data = resp.json()
+		content_blocks = data.get("content", [])
+		raw_content = "".join(
+			block.get("text", "")
+			for block in content_blocks
+			if isinstance(block, dict) and block.get("type") == "text"
+		).strip()
+
+		result = _parse_ai_json_response(raw_content, generation_type=generation_type)
+
+		usage = data.get("usage") or {}
+		prompt_tokens = cint(usage.get("input_tokens"))
+		completion_tokens = cint(usage.get("output_tokens"))
+		total_tokens = prompt_tokens + completion_tokens
+		cost = calculate_cost(model_name, prompt_tokens, completion_tokens)
+		log_model = model_name if "claude" in model_name.lower() else f"claude:{model_name}"
+
+		log_generation(
+			user=frappe.session.user,
+			generation_type=generation_type,
+			status="Success",
+			model=log_model,
+			mode=mode,
+			prompt_tokens=prompt_tokens,
+			completion_tokens=completion_tokens,
+			total_tokens=total_tokens,
+			estimated_cost=cost,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
+			request_payload=user_prompt[:5000],
+			response_payload=raw_content[:5000],
+		)
+
+		result["_usage"] = {
+			"provider": "Claude",
+			"model": model_name,
+			"prompt_tokens": prompt_tokens,
+			"completion_tokens": completion_tokens,
+			"total_tokens": total_tokens,
+			"estimated_cost": cost,
+		}
+		return result
+
+	except frappe.ValidationError:
+		raise
+	except requests.exceptions.Timeout:
+		msg = "Request to Claude AI (Anthropic) timed out. Please try again."
+		log_generation(
+			user=frappe.session.user,
+			generation_type=generation_type,
+			status="Failed",
+			model=model_name,
+			mode=mode,
+			error_message=msg,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
+		)
+		frappe.throw(_(msg), frappe.ValidationError)
+	except requests.exceptions.RequestException as e:
+		msg = _redact_secrets(f"Network error communicating with Claude AI (Anthropic): {e}", [api_key])
+		log_generation(
+			user=frappe.session.user,
+			generation_type=generation_type,
+			status="Failed",
+			model=model_name,
+			mode=mode,
+			error_message=msg,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
+		)
+		frappe.throw(_(msg), frappe.ValidationError)
+	except json.JSONDecodeError as e:
+		msg = f"Claude AI returned an unexpected non-JSON response format: {e}"
+		log_generation(
+			user=frappe.session.user,
+			generation_type=generation_type,
+			status="Failed",
+			model=model_name,
+			mode=mode,
+			error_message=msg,
+			course=course,
+			chapter=chapter,
+			lesson=lesson,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
+		)
+		frappe.throw(_(msg), frappe.ValidationError)
+
+
+PROVIDER_HANDLERS = {
+	"Ollama": _call_ollama_provider,
+	"OpenAI": _call_openai_provider,
+	"Claude": _call_claude_provider,
+}
 
 
 def call_ai_service(
@@ -264,222 +1102,30 @@ def call_ai_service(
 	reference_doctype: str | None = None,
 	reference_name: str | None = None,
 ) -> dict:
-	"""Calls the active AI Provider (Ollama or OpenAI) with enforced JSON schema.
-	If the active provider is unreachable or unconfigured, gracefully switches to the
-	high-fidelity content-driven offline engine for local resilience.
+	"""Provider-independent AI generation entrypoint supporting Ollama, OpenAI, and Claude (Anthropic).
+	Dispatches to the active configured provider and returns a standardized dictionary output.
 	"""
 	cfg = get_ai_settings()
-	active_provider = provider or cfg.get("provider") or "Ollama"
-	temp = temperature if temperature is not None else cfg.get("temperature", 0.7)
-	tokens_limit = max_tokens or cfg.get("max_tokens", 4000)
+	active_provider = normalize_provider(provider) or normalize_provider(cfg.get("provider")) or "Ollama"
 
-	# 1. PROVIDER A: OLLAMA (Free Local AI)
-	if active_provider == "Ollama":
-		ollama_url = cfg.get("ollama_base_url", "http://localhost:11434").rstrip("/")
-		model_name = model or cfg.get("ollama_model", "llama3.2")
-
-		try:
-			payload = {
-				"model": model_name,
-				"messages": [
-					{"role": "system", "content": system_prompt},
-					{"role": "user", "content": user_prompt},
-				],
-				"format": "json",
-				"stream": False,
-				"options": {
-					"temperature": temp,
-					"num_predict": tokens_limit,
-				},
-			}
-
-			start_time = time.time()
-			resp = requests.post(
-				f"{ollama_url}/api/chat",
-				json=payload,
-				timeout=120.0,
-			)
-
-			if resp.status_code == 200:
-				data = resp.json()
-				content_raw = data.get("message", {}).get("content", "").strip()
-
-				# Strip markdown json codeblocks if any
-				if content_raw.startswith("```json"):
-					content_raw = content_raw[7:]
-				if content_raw.startswith("```"):
-					content_raw = content_raw[3:]
-				if content_raw.endswith("```"):
-					content_raw = content_raw[:-3]
-				content_raw = content_raw.strip()
-
-				result = json.loads(content_raw)
-
-				prompt_tokens = data.get("prompt_eval_count", len(user_prompt.split()) * 2)
-				completion_tokens = data.get("eval_count", len(content_raw.split()) * 2)
-				total_tokens = prompt_tokens + completion_tokens
-
-				log_generation(
-					user=frappe.session.user,
-					generation_type=generation_type,
-					status="Success",
-					model=f"ollama:{model_name}",
-					mode=mode,
-					prompt_tokens=prompt_tokens,
-					completion_tokens=completion_tokens,
-					total_tokens=total_tokens,
-					estimated_cost=0.0,  # Free!
-					course=course,
-					chapter=chapter,
-					lesson=lesson,
-					reference_doctype=reference_doctype,
-					reference_name=reference_name,
-					request_payload=user_prompt[:5000],
-					response_payload=content_raw[:5000],
-				)
-
-				result["_usage"] = {
-					"provider": "Ollama",
-					"model": model_name,
-					"prompt_tokens": prompt_tokens,
-					"completion_tokens": completion_tokens,
-					"total_tokens": total_tokens,
-					"estimated_cost": 0.0,
-				}
-				return result
-
-			else:
-				frappe.logger("ai_assessment").warning(
-					f"Ollama returned HTTP {resp.status_code}: {resp.text}. Falling back to content-driven offline engine."
-				)
-
-		except Exception as e:
-			frappe.logger("ai_assessment").warning(
-				f"Ollama local API call failed ({e}). Falling back to content-driven offline engine."
-			)
-
-		# Graceful local fallback if Ollama is not yet started or model is missing
-		return fallback_offline_engine(
+	handler = PROVIDER_HANDLERS.get(active_provider)
+	if handler:
+		return handler(
+			cfg=cfg,
 			system_prompt=system_prompt,
 			user_prompt=user_prompt,
+			model=model,
+			temperature=temperature,
+			max_tokens=max_tokens,
 			generation_type=generation_type,
 			mode=mode,
 			course=course,
 			chapter=chapter,
 			lesson=lesson,
 			batch=batch,
-			provider_info=f"Ollama ({model_name} offline fallback)",
+			reference_doctype=reference_doctype,
+			reference_name=reference_name,
 		)
-
-	# 2. PROVIDER B: OPENAI API (Optional Paid)
-	elif active_provider == "OpenAI":
-		api_key = cfg.get("openai_api_key")
-		model_name = model or cfg.get("openai_model", "gpt-4o-mini")
-		base_url = cfg.get("openai_base_url", "https://api.openai.com/v1")
-
-		if not api_key:
-			frappe.logger("ai_assessment").warning(
-				"OpenAI API key not configured. Using high-fidelity content-driven offline engine."
-			)
-			return fallback_offline_engine(
-				system_prompt=system_prompt,
-				user_prompt=user_prompt,
-				generation_type=generation_type,
-				mode=mode,
-				course=course,
-				chapter=chapter,
-				lesson=lesson,
-				batch=batch,
-				provider_info=f"OpenAI ({model_name} offline fallback)",
-			)
-
-		try:
-			from openai import OpenAI, AuthenticationError, RateLimitError, APIConnectionError, BadRequestError
-
-			client = OpenAI(api_key=api_key, base_url=base_url, timeout=90.0)
-
-			messages = [
-				{"role": "system", "content": system_prompt},
-				{"role": "user", "content": user_prompt},
-			]
-
-			call_params = {
-				"model": model_name,
-				"messages": messages,
-				"response_format": {"type": "json_object"},
-			}
-			if "o1" not in model_name.lower() and "o3" not in model_name.lower():
-				call_params["temperature"] = temp
-				call_params["max_tokens"] = tokens_limit
-
-			response = client.chat.completions.create(**call_params)
-
-			raw_content = response.choices[0].message.content
-			result = json.loads(raw_content)
-
-			usage = response.usage
-			prompt_tokens = usage.prompt_tokens if usage else 0
-			completion_tokens = usage.completion_tokens if usage else 0
-			total_tokens = usage.total_tokens if usage else (prompt_tokens + completion_tokens)
-			cost = calculate_cost(model_name, prompt_tokens, completion_tokens)
-
-			log_generation(
-				user=frappe.session.user,
-				generation_type=generation_type,
-				status="Success",
-				model=model_name,
-				mode=mode,
-				prompt_tokens=prompt_tokens,
-				completion_tokens=completion_tokens,
-				total_tokens=total_tokens,
-				estimated_cost=cost,
-				course=course,
-				chapter=chapter,
-				lesson=lesson,
-				reference_doctype=reference_doctype,
-				reference_name=reference_name,
-				request_payload=user_prompt[:5000],
-				response_payload=raw_content[:5000],
-			)
-
-			result["_usage"] = {
-				"provider": "OpenAI",
-				"model": model_name,
-				"prompt_tokens": prompt_tokens,
-				"completion_tokens": completion_tokens,
-				"total_tokens": total_tokens,
-				"estimated_cost": cost,
-			}
-			return result
-
-		except RateLimitError as e:
-			msg = f"OpenAI Rate Limit Exceeded or Quota Exhausted: {e}"
-			log_generation(
-				user=frappe.session.user,
-				generation_type=generation_type,
-				status="Failed",
-				model=model_name,
-				mode=mode,
-				error_message=msg,
-				course=course,
-				chapter=chapter,
-				lesson=lesson,
-			)
-			frappe.throw(_(msg), frappe.ValidationError)
-
-		except Exception as e:
-			frappe.logger("ai_assessment").warning(f"OpenAI call error: {e}. Falling back to offline engine.")
-			return fallback_offline_engine(
-				system_prompt=system_prompt,
-				user_prompt=user_prompt,
-				generation_type=generation_type,
-				mode=mode,
-				course=course,
-				chapter=chapter,
-				lesson=lesson,
-				batch=batch,
-				provider_info=f"OpenAI fallback ({model_name})",
-			)
 
 	# Fallback for unknown provider
 	return fallback_offline_engine(
